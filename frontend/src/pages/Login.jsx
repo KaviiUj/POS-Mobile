@@ -1,91 +1,196 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { authService } from '../services/authService';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import Card from '../components/Card';
+import Input from '../components/Input';
+import Button from '../components/Button';
+import { MOBILE_PREFIX } from '../utils/constants';
+import { customerService } from '../services/customerService';
+import { outletService } from '../services/outletService';
 import { useAuthStore } from '../store/authStore';
+import { useTableStore } from '../store/tableStore';
+import { useOutletStore } from '../store/outletStore';
+import { getDeviceType, getUniqueDeviceId } from '../utils/device';
+import { extractEncryptedParams, clearUrlParamsWithHistory } from '../utils/urlParams';
 
 const Login = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [debugInfo, setDebugInfo] = useState(null);
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
+  const { tableId, tableName, setTable } = useTableStore();
+  const { setOutletConfig } = useOutletStore();
+  const [searchParams] = useSearchParams();
+
+  // Extract encrypted params from URL on component mount
+  useEffect(() => {
+    const params = extractEncryptedParams(searchParams);
+    
+    // DEBUG: Print decrypted data
+    if (params.tableName || params.tableId) {
+      const debugData = {
+        tableName: params.tableName,
+        tableId: params.tableId,
+        mobileNumber: params.mobileNumber
+      };
+      console.log('🔓 Decrypted Table Data:', debugData);
+      setDebugInfo(debugData);
+      
+      // Hide debug info after 5 seconds
+      setTimeout(() => setDebugInfo(null), 5000);
+    }
+    
+    // If we have table information, store it
+    if (params.tableName || params.tableId) {
+      setTable(params.tableId, params.tableName);
+    }
+
+    // If mobile number is provided in params, pre-fill it
+    if (params.mobileNumber) {
+      setMobileNumber(params.mobileNumber);
+    }
+
+    // Clear URL params to keep URL clean
+    if (searchParams.toString()) {
+      clearUrlParamsWithHistory();
+    }
+  }, [searchParams, setTable]);
+
+  const handleMobileNumberChange = (e) => {
+    let value = e.target.value.replace(/\D/g, '');
+    
+    // Remove leading zeros
+    value = value.replace(/^0+/, '');
+    
+    setMobileNumber(value);
+    setError('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!email || !password) {
-      toast.error('Please fill in all fields');
+    // Validate mobile number
+    if (!mobileNumber) {
+      setError('Please enter a mobile number');
+      return;
+    }
+
+    if (mobileNumber.length < 9) {
+      setError('Please enter a valid mobile number');
+      return;
+    }
+
+    // Validate table information
+    if (!tableName || !tableId) {
+      setError('Invalid entry!');
       return;
     }
 
     setLoading(true);
+    setError('');
+    
     try {
-      const response = await authService.login(email, password);
-      setAuth(response.data.user, response.data.token);
-      toast.success('Login successful!');
-      navigate('/dashboard');
+      const mobileType = getDeviceType();
+      const uniqueId = getUniqueDeviceId();
+      
+      const response = await customerService.register(
+        mobileNumber,
+        mobileType,
+        uniqueId
+      );
+
+      if (response.success) {
+        const { customer, accessToken, refreshToken } = response.data;
+        
+        // Save authentication data
+        setAuth(customer, accessToken, refreshToken);
+        
+        // Log saved data for debugging
+        console.log('✅ Login successful - Data saved:', {
+          customer,
+          tableName,
+          tableId,
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+        });
+        
+        // Fetch and save outlet configuration
+        try {
+          const outletConfigResponse = await outletService.getOutletConfig();
+          if (outletConfigResponse.success) {
+            setOutletConfig(outletConfigResponse.data);
+            console.log('✅ Outlet config loaded:', outletConfigResponse.data);
+          }
+        } catch (outletError) {
+          console.error('Failed to fetch outlet config:', outletError);
+          // Continue anyway, don't block user
+        }
+        
+        navigate('/home');
+      }
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Login failed');
+      console.error('Login failed:', error);
+      setError(error.response?.data?.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-500 to-primary-700 px-4">
-      <div className="max-w-md w-full bg-white rounded-xl shadow-2xl p-8">
+    <div className="min-h-screen flex items-center justify-center bg-background-primary px-4">
+      {/* Debug Info Display */}
+      {debugInfo && (
+        <div className="fixed top-4 left-4 right-4 bg-accent text-white p-4 rounded-lg shadow-lg z-50 text-xs">
+          <p className="font-bold mb-2">🔓 Decrypted Data:</p>
+          <p>Table Name: {debugInfo.tableName}</p>
+          <p>Table ID: {debugInfo.tableId}</p>
+          {debugInfo.mobileNumber && <p>Mobile: {debugInfo.mobileNumber}</p>}
+        </div>
+      )}
+      
+      <Card className="w-full max-w-md" useItemSurface={true}>
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">POS Mobile</h1>
-          <p className="text-gray-600">Sign in to your account</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Welcome</h1>
+          {tableName ? (
+            <p className="text-neutral-light">
+              Table: <span className="text-accent font-semibold">{tableName}</span>
+            </p>
+          ) : (
+            <p className="text-neutral-light">Enter your mobile number to continue</p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              Email Address
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition"
-              placeholder="Enter your email"
-              required
-            />
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-light font-medium">
+                {MOBILE_PREFIX}
+              </span>
+              <Input
+                type="tel"
+                placeholder="71 234 5678"
+                value={mobileNumber}
+                onChange={handleMobileNumberChange}
+                name="mobileNumber"
+                className="pl-16"
+                maxLength={9}
+              />
+            </div>
+            {error && (
+              <p className="mt-2 text-sm text-primary">{error}</p>
+            )}
           </div>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition"
-              placeholder="Enter your password"
-              required
-            />
-          </div>
-
-          <button
+          <Button
             type="submit"
-            disabled={loading}
-            className="w-full bg-primary-600 text-white py-3 rounded-lg font-semibold hover:bg-primary-700 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading || !mobileNumber}
+            variant="primary"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
+            {loading ? 'Please wait...' : 'Continue'}
+          </Button>
         </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
-            Demo: admin@pos.com / password123
-          </p>
-        </div>
-      </div>
+      </Card>
     </div>
   );
 };

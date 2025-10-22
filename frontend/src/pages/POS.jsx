@@ -5,6 +5,7 @@ import { productService } from '../services/productService';
 import { categoryService } from '../services/categoryService';
 import { orderService } from '../services/orderService';
 import { useCartStore } from '../store/cartStore';
+import Discount from '../components/Discount';
 
 const POS = () => {
   const [products, setProducts] = useState([]);
@@ -128,8 +129,9 @@ const POS = () => {
                 onClick={() => addItem(product)}
                 className="bg-gray-50 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition border border-gray-200"
               >
-                <div className="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center">
+                <div className="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center relative">
                   <span className="text-4xl">📦</span>
+                  <Discount discount={product.discount} />
                 </div>
                 <h3 className="font-medium text-gray-900 mb-1 truncate">{product.name}</h3>
                 <p className="text-primary-600 font-bold">${product.price.toFixed(2)}</p>

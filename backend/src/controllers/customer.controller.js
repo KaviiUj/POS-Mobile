@@ -41,21 +41,22 @@ exports.registerCustomer = async (req, res) => {
       uniqueId,
     });
 
-    // Check if customer already exists
-    let customer = await Customer.findOne({ mobileNumber });
+    // Check if customer already exists by uniqueId (device)
+    let customer = await Customer.findOne({ uniqueId });
 
     if (customer) {
-      // Customer exists - update uniqueId and mobileType
-      customer.uniqueId = uniqueId;
+      // Customer exists on this device - update mobile number and device type
+      customer.mobileNumber = mobileNumber;
       customer.mobileType = mobileType;
       await customer.save();
 
       logger.info('Existing customer logged in', {
         customerId: customer._id.toString(),
         mobileNumber: customer.mobileNumber,
+        uniqueId: customer.uniqueId,
       });
     } else {
-      // Create new customer
+      // Create new customer for this device
       customer = await Customer.create({
         mobileNumber,
         mobileType,
@@ -67,6 +68,7 @@ exports.registerCustomer = async (req, res) => {
       logger.info('New customer registered', {
         customerId: customer._id.toString(),
         mobileNumber: customer.mobileNumber,
+        uniqueId: customer.uniqueId,
       });
     }
 

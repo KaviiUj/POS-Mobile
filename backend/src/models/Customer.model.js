@@ -5,7 +5,6 @@ const customerSchema = new mongoose.Schema(
     mobileNumber: {
       type: Number,
       required: [true, 'Mobile number is required'],
-      unique: true,
       validate: {
         validator: function (v) {
           return v && v.toString().length <= 9;

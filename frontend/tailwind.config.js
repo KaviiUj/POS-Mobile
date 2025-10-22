@@ -1,3 +1,5 @@
+import colors from './src/utils/colors.js';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -7,18 +9,34 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
+        primary: colors.primary,
+        accent: colors.accent,
+        background: {
+          primary: colors.background.primary,
+          secondary: colors.background.secondary,
+          search: colors.background.search,
         },
+        neutral: {
+          medium: colors.neutral.medium,
+          light: colors.neutral.light,
+        },
+        text: {
+          primary: colors.text.primary,
+          secondary: colors.text.secondary,
+          disabled: colors.text.disabled,
+          placeholder: colors.text.placeholder,
+        },
+        border: {
+          primary: colors.border.primary,
+          secondary: colors.border.secondary,
+        },
+        status: {
+          error: colors.status.error,
+          warning: colors.status.warning,
+        },
+      },
+      fontFamily: {
+        sans: ['Poppins', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
       },
     },
   },

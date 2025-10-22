@@ -2,6 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Font Face Declarations */
+@font-face {
+  font-family: 'Poppins';
+  src: url('./assets/fonts/Poppins-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Poppins';
+  src: url('./assets/fonts/Poppins-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Poppins';
+  src: url('./assets/fonts/Poppins-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Poppins';
+  src: url('./assets/fonts/Poppins-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Poppins';
+  src: url('./assets/fonts/Poppins-Black.ttf') format('truetype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* CSS Variables for Color Palette */
+:root {
+  /* Primary Colors */
+  --color-primary: #DC3535;
+  --color-accent: #D17842;
+  
+  /* Background Colors */
+  --color-bg-primary: #0C0F14;
+  --color-bg-secondary: #252A32;
+  
+  /* Neutral Colors */
+  --color-neutral-medium: #52555A;
+  --color-neutral-light: #AEAEAE;
+  
+  /* Base Colors */
+  --color-white: #FFFFFF;
+  
+  /* Semantic Colors */
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #AEAEAE;
+  --color-text-disabled: #52555A;
+  
+  --color-border-primary: #52555A;
+  --color-border-secondary: #252A32;
+  
+  --color-status-error: #DC3535;
+  --color-status-warning: #D17842;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -9,7 +79,7 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;

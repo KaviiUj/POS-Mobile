@@ -4,6 +4,7 @@ import 'react-toastify/dist/ReactToastify.css';
 
 import { useAuthStore } from './store/authStore';
 import Login from './pages/Login';
+import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Products from './pages/Products';
 import Categories from './pages/Categories';
@@ -12,15 +13,16 @@ import POS from './pages/POS';
 import Layout from './components/Layout';
 
 function App() {
-  const { token } = useAuthStore();
+  const { accessToken } = useAuthStore();
 
   return (
     <>
       <Router>
         <Routes>
-          <Route path="/login" element={!token ? <Login /> : <Navigate to="/dashboard" />} />
+          <Route path="/login" element={!accessToken ? <Login /> : <Navigate to="/home" />} />
+          <Route path="/home" element={accessToken ? <Home /> : <Navigate to="/login" />} />
           
-          <Route path="/" element={token ? <Layout /> : <Navigate to="/login" />}>
+          <Route path="/" element={accessToken ? <Layout /> : <Navigate to="/login" />}>
             <Route index element={<Navigate to="/dashboard" />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="pos" element={<POS />} />
@@ -29,7 +31,7 @@ function App() {
             <Route path="orders" element={<Orders />} />
           </Route>
 
-          <Route path="*" element={<Navigate to={token ? "/dashboard" : "/login"} />} />
+          <Route path="*" element={<Navigate to={accessToken ? "/home" : "/login"} />} />
         </Routes>
       </Router>
       <ToastContainer position="top-right" autoClose={3000} />

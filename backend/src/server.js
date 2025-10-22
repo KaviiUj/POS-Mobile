@@ -32,6 +32,7 @@ app.use('/api/v1/item', require('./routes/item.routes'));
 app.use('/api/v1/outletConfig', require('./routes/settings.routes'));
 app.use('/api/v1/cart', require('./routes/cart.routes'));
 app.use('/api/v1/order', require('./routes/order.routes'));
+app.use('/api/v1/qr', require('./routes/qr.routes'));
 
 // Health check route
 app.get('/health', (req, res) => {
@@ -63,10 +64,11 @@ app.use(errorLogger);
 // Error handler middleware (must be last)
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
+const HOST = '0.0.0.0';
 
-app.listen(PORT, () => {
-  logger.info(`🚀 Server is running on port ${PORT} in ${process.env.NODE_ENV} mode`);
+app.listen(PORT, HOST, () => {
+  logger.info(`🚀 Server is running on ${HOST}:${PORT} in ${process.env.NODE_ENV} mode`);
 });
 
 module.exports = app;
