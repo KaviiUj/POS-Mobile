@@ -1,6 +1,9 @@
 const Order = require('../models/Order.model');
 const Cart = require('../models/Cart.model');
 const Table = require('../models/Table.model');
+const Customer = require('../models/Customer.model');
+const TokenBlacklist = require('../models/TokenBlacklist.model');
+const RefreshToken = require('../models/RefreshToken.model');
 const logger = require('../utils/logger');
 
 /**
@@ -20,6 +23,7 @@ exports.placeOrder = async (req, res) => {
       tableName,
       mobileNumber,
       note,
+      sessionPin, // PIN provided by staff
     } = req.body;
 
     const customerId = req.customer._id;
@@ -32,6 +36,7 @@ exports.placeOrder = async (req, res) => {
       totalAmount,
       tableId,
       tableName,
+      sessionPinProvided: !!sessionPin,
     });
 
     // Validate required fields
@@ -43,6 +48,74 @@ exports.placeOrder = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Items are required to place order',
+      });
+    }
+
+    // Validate session PIN
+    if (!sessionPin) {
+      logger.warn('Session PIN not provided', {
+        customerId: customerId.toString(),
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Session PIN is required to place order. Please ask staff for the PIN.',
+        requiresPin: true,
+      });
+    }
+
+    // Verify PIN with table
+    if (tableId) {
+      const table = await Table.findById(tableId);
+      
+      if (!table) {
+        logger.warn('Table not found for PIN verification', {
+          customerId: customerId.toString(),
+          tableId,
+        });
+
+        return res.status(404).json({
+          success: false,
+          message: 'Table not found',
+        });
+      }
+
+      // Verify PIN matches
+      const isPinValid = table.verifyPin(sessionPin);
+      
+      if (!isPinValid) {
+        logger.warn('Invalid session PIN provided', {
+          customerId: customerId.toString(),
+          tableId: table._id.toString(),
+          tableName: table.tableName,
+        });
+
+        return res.status(403).json({
+          success: false,
+          message: 'Invalid PIN. Please check the PIN provided by staff and try again.',
+          invalidPin: true,
+        });
+      }
+
+      // Verify PIN belongs to this customer
+      if (table.customerId && table.customerId.toString() !== customerId.toString()) {
+        logger.warn('PIN does not belong to this customer', {
+          customerId: customerId.toString(),
+          tableCustomerId: table.customerId.toString(),
+          tableId: table._id.toString(),
+        });
+
+        return res.status(403).json({
+          success: false,
+          message: 'This PIN is not valid for your session.',
+          invalidPin: true,
+        });
+      }
+
+      logger.info('Session PIN validated successfully', {
+        customerId: customerId.toString(),
+        tableId: table._id.toString(),
+        tableName: table.tableName,
       });
     }
 
@@ -84,19 +157,42 @@ exports.placeOrder = async (req, res) => {
       orderNumber: order.orderNumber,
     });
 
-    // Update table if tableId provided
+    // Update customer with order information
+    const customer = await Customer.findById(customerId);
+    if (customer) {
+      customer.addOrderToSession(order.orderNumber);
+      await customer.save();
+
+      logger.info('Customer updated with order', {
+        customerId: customer._id.toString(),
+        orderNumber: order.orderNumber,
+        activeOrders: customer.activeOrderIds.length,
+      });
+    }
+
+    // Update table if tableId provided - mark as occupied on first order
     if (tableId) {
       const table = await Table.findById(tableId);
       if (table) {
-        table.orderId = order.orderNumber;
-        table.isAvailable = false;
-        await table.save();
+        // Only mark table as occupied if it's the first order
+        if (table.isAvailable) {
+          table.orderId = order.orderNumber;
+          table.isAvailable = false;
+          await table.save();
 
-        logger.info('Table updated with order', {
-          tableId: table._id.toString(),
-          tableName: table.tableName,
-          orderId: order.orderNumber,
-        });
+          logger.info('Table marked as occupied', {
+            tableId: table._id.toString(),
+            tableName: table.tableName,
+            orderId: order.orderNumber,
+          });
+        } else {
+          logger.info('Table already occupied, added another order', {
+            tableId: table._id.toString(),
+            tableName: table.tableName,
+            newOrderId: order.orderNumber,
+            existingOrderId: table.orderId,
+          });
+        }
       } else {
         logger.warn('Table not found for order', {
           tableId,
@@ -163,33 +259,23 @@ exports.placeOrder = async (req, res) => {
 };
 
 /**
- * @desc    Settle bill for order
- * @route   PATCH /api/v1/order/settle?orderId=xxx&paymentMethod=xxx
+ * @desc    Settle bill for all orders in session
+ * @route   PATCH /api/v1/order/settle?paymentMethod=xxx
  * @access  Private (Customer)
  */
 exports.settleBill = async (req, res) => {
   try {
-    const { orderId, paymentMethod } = req.query;
+    const { paymentMethod } = req.query;
     const customerId = req.customer._id;
+    const customer = req.customer;
 
-    logger.info('Settling bill', {
+    logger.info('Settling bill for customer session', {
       customerId: customerId.toString(),
-      orderId,
+      activeOrders: customer.activeOrderIds,
       paymentMethod,
     });
 
-    // Validate inputs
-    if (!orderId) {
-      logger.warn('Order ID not provided', {
-        customerId: customerId.toString(),
-      });
-
-      return res.status(400).json({
-        success: false,
-        message: 'Order ID is required',
-      });
-    }
-
+    // Validate payment method
     if (!paymentMethod) {
       logger.warn('Payment method not provided', {
         customerId: customerId.toString(),
@@ -201,83 +287,241 @@ exports.settleBill = async (req, res) => {
       });
     }
 
-    // Find order
-    const order = await Order.findById(orderId);
-
-    if (!order) {
-      logger.warn('Order not found for settlement', {
+    // Check if customer has active orders
+    if (!customer.activeOrderIds || customer.activeOrderIds.length === 0) {
+      logger.warn('No active orders to settle', {
         customerId: customerId.toString(),
-        orderId,
-      });
-
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found',
-      });
-    }
-
-    // Check if bill is already settled
-    if (order.billIsSettle) {
-      logger.warn('Bill already settled', {
-        customerId: customerId.toString(),
-        orderId,
       });
 
       return res.status(400).json({
         success: false,
-        message: 'Bill is already settled',
+        message: 'No active orders to settle',
       });
     }
 
-    // Update order
-    order.paymentMethod = paymentMethod;
-    order.paymentStatus = 'completed';
-    order.billIsSettle = true;
-    await order.save();
-
-    logger.info('Order bill settled successfully', {
-      customerId: customerId.toString(),
-      orderId: order._id.toString(),
-      orderNumber: order.orderNumber,
-      paymentMethod,
+    // Find all orders for this customer's session
+    const orders = await Order.find({
+      orderNumber: { $in: customer.activeOrderIds },
+      billIsSettle: false,
     });
 
-    // Update table - make it available again
-    if (order.tableId) {
-      const table = await Table.findById(order.tableId);
+    if (orders.length === 0) {
+      logger.warn('No unsettled orders found', {
+        customerId: customerId.toString(),
+        activeOrderIds: customer.activeOrderIds,
+      });
+
+      return res.status(404).json({
+        success: false,
+        message: 'No unsettled orders found',
+      });
+    }
+
+    // Calculate total bill amount
+    let totalBillAmount = 0;
+    const settledOrderNumbers = [];
+
+    // Settle all orders
+    for (const order of orders) {
+      order.paymentMethod = paymentMethod;
+      order.paymentStatus = 'completed';
+      order.billIsSettle = true;
+      order.orderStatus = 'completed';
+      await order.save();
+
+      totalBillAmount += order.total;
+      settledOrderNumbers.push(order.orderNumber);
+
+      logger.info('Order settled', {
+        customerId: customerId.toString(),
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        amount: order.total,
+      });
+    }
+
+    logger.info('All orders in session settled', {
+      customerId: customerId.toString(),
+      settledOrders: settledOrderNumbers,
+      totalAmount: totalBillAmount,
+    });
+
+    // Update table - make it available again and clear session PIN
+    if (customer.tableId) {
+      const table = await Table.findById(customer.tableId);
       if (table) {
-        table.orderId = null;
-        table.isAvailable = true;
+        table.makeAvailable(); // This clears orderId, isAvailable, sessionPin, and customerId
         await table.save();
 
-        logger.info('Table made available after bill settlement', {
+        logger.info('Table made available and PIN cleared after bill settlement', {
           tableId: table._id.toString(),
           tableName: table.tableName,
         });
       }
     }
 
-    logger.info('Bill settled successfully', {
+    // End customer session
+    customer.endSession();
+    await customer.save();
+
+    logger.info('Customer session ended after bill settlement', {
       customerId: customerId.toString(),
-      orderId: order._id.toString(),
-      orderNumber: order.orderNumber,
+    });
+
+    // Blacklist all active tokens for this customer
+    const currentToken = req.token;
+    if (currentToken) {
+      const decoded = req.decoded;
+      await TokenBlacklist.create({
+        token: currentToken,
+        customerId,
+        reason: 'bill_settled',
+        expiresAt: new Date(decoded.exp * 1000),
+      }).catch(err => {
+        if (err.code !== 11000) {
+          logger.debug('Error blacklisting token on bill settlement', { error: err.message });
+        }
+      });
+    }
+
+    // Deactivate all refresh tokens for this customer
+    await RefreshToken.updateMany(
+      { customerId, isActive: true },
+      { $set: { isActive: false } }
+    );
+
+    logger.info('All tokens invalidated after bill settlement', {
+      customerId: customerId.toString(),
+    });
+
+    logger.info('Bill settlement completed successfully', {
+      customerId: customerId.toString(),
+      settledOrders: settledOrderNumbers.length,
+      totalAmount: totalBillAmount,
     });
 
     res.status(200).json({
       success: true,
-      message: 'Bill settled successfully',
+      message: 'Bill settled successfully. Thank you for your visit!',
+      data: {
+        settledOrders: settledOrderNumbers,
+        totalAmount: totalBillAmount,
+        orderCount: settledOrderNumbers.length,
+      },
+      sessionEnded: true,
+      requiresNewScan: true,
     });
   } catch (error) {
     logger.error('Error settling bill', {
       error: error.message,
       stack: error.stack,
       customerId: req.customer?._id.toString(),
-      orderId: req.query.orderId,
     });
 
     res.status(500).json({
       success: false,
       message: 'Error settling bill',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Verify session PIN
+ * @route   POST /api/v1/order/verify-pin
+ * @access  Private (Customer)
+ */
+exports.verifySessionPin = async (req, res) => {
+  try {
+    const { sessionPin, tableId } = req.body;
+    const customerId = req.customer._id;
+
+    logger.info('Verifying session PIN', {
+      customerId: customerId.toString(),
+      tableId,
+      pinProvided: !!sessionPin,
+    });
+
+    // Validate inputs
+    if (!sessionPin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Session PIN is required',
+      });
+    }
+
+    if (!tableId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Table ID is required',
+      });
+    }
+
+    // Find table
+    const table = await Table.findById(tableId);
+    
+    if (!table) {
+      logger.warn('Table not found for PIN verification', {
+        customerId: customerId.toString(),
+        tableId,
+      });
+
+      return res.status(404).json({
+        success: false,
+        message: 'Table not found',
+      });
+    }
+
+    // Verify PIN
+    const isPinValid = table.verifyPin(sessionPin);
+    
+    if (!isPinValid) {
+      logger.warn('Invalid session PIN provided during verification', {
+        customerId: customerId.toString(),
+        tableId: table._id.toString(),
+      });
+
+      return res.status(403).json({
+        success: false,
+        message: 'Invalid PIN',
+        isValid: false,
+      });
+    }
+
+    // Verify PIN belongs to this customer
+    if (table.customerId && table.customerId.toString() !== customerId.toString()) {
+      logger.warn('PIN does not belong to this customer during verification', {
+        customerId: customerId.toString(),
+        tableCustomerId: table.customerId.toString(),
+      });
+
+      return res.status(403).json({
+        success: false,
+        message: 'This PIN is not valid for your session',
+        isValid: false,
+      });
+    }
+
+    logger.info('Session PIN verified successfully', {
+      customerId: customerId.toString(),
+      tableId: table._id.toString(),
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'PIN verified successfully',
+      isValid: true,
+    });
+  } catch (error) {
+    logger.error('Error verifying session PIN', {
+      error: error.message,
+      stack: error.stack,
+      customerId: req.customer?._id.toString(),
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error verifying PIN',
       error: error.message,
     });
   }

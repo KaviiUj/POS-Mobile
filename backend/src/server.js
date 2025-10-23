@@ -6,6 +6,7 @@ const connectDB = require('./config/database');
 const logger = require('./utils/logger');
 const { errorLogger, errorHandler } = require('./middleware/errorLogger');
 const morganLogger = require('./middleware/morganLogger');
+const { initializeScheduledCleanup } = require('./utils/sessionCleanup');
 
 // Load environment variables
 dotenv.config();
@@ -15,6 +16,9 @@ const app = express();
 
 // Connect to MongoDB
 connectDB();
+
+// Initialize scheduled session cleanup (runs every hour)
+initializeScheduledCleanup();
 
 // Middleware
 app.use(helmet()); // Security headers

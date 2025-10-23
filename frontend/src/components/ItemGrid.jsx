@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { itemService } from '../services/itemService';
+import { cartService } from '../services/cartService';
 import ItemCard from './ItemCard';
+import { useCartStore } from '../store/cartStore';
+import { useTableStore } from '../store/tableStore';
 
-const ItemGrid = ({ selectedCategory, categoryId }) => {
+const ItemGrid = ({ selectedCategory, categoryId, onItemAdded, onItemClick }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { cartId, setCart } = useCartStore();
+  const { tableId, tableName } = useTableStore();
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -32,29 +37,59 @@ const ItemGrid = ({ selectedCategory, categoryId }) => {
     fetchItems();
   }, [selectedCategory, categoryId]);
 
-  const handleAddToCart = (item) => {
-    console.log('Adding to cart:', item);
-    // TODO: Implement add to cart functionality
+  const handleAddToCart = async (item) => {
+    try {
+      console.log('Adding to cart:', item);
+      console.log('Current cartId:', cartId);
+      
+      // Check if item has modifiers
+      const hasModifiers = item.modifiers && item.modifiers.length > 0;
+      
+      // If item has NO modifiers, check if it already exists in cart
+      if (!hasModifiers && cartId) {
+        const { cart } = useCartStore.getState();
+        if (cart?.items?.includes(item.itemId)) {
+          console.log('❌ Item already in cart');
+          if (onItemAdded) {
+            onItemAdded('Item is already in the cart');
+          }
+          return;
+        }
+      }
+      
+      let response;
+      
+      if (!cartId) {
+        // No cart exists, create new cart
+        console.log('Creating new cart...');
+        response = await cartService.addToCart(item.itemId, tableId, tableName);
+      } else {
+        // Cart exists, update it
+        console.log('Updating existing cart...');
+        response = await cartService.updateCart(cartId, item.itemId);
+      }
+      
+      if (response.success) {
+        // Save cart data
+        setCart(response.data);
+        console.log('✅ Cart updated:', response.data);
+        
+        // Show snackbar
+        if (onItemAdded) {
+          onItemAdded('Item added');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to add item to cart:', error);
+      // Show error snackbar
+      if (onItemAdded) {
+        onItemAdded('Failed to add item');
+      }
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-8">
-        <div className="text-neutral-light">Loading items...</div>
-      </div>
-    );
-  }
-
-  if (items.length === 0) {
-    return (
-      <div className="flex justify-center py-8">
-        <div className="text-neutral-light">No items found</div>
-      </div>
-    );
-  }
-
-  // Create dynamic row layouts
-  const createRowLayouts = (items) => {
+  // Create dynamic row layouts - deterministic based on index
+  const rowLayouts = useMemo(() => {
     const layouts = [];
     let currentIndex = 0;
     
@@ -63,11 +98,11 @@ const ItemGrid = ({ selectedCategory, categoryId }) => {
       let rowType;
       
       if (remainingItems >= 3) {
-        // Randomly choose between 1 large, 2 items, or 3 items
-        const random = Math.random();
-        if (random < 0.2) {
+        // Deterministic pattern based on index
+        const pattern = currentIndex % 6;
+        if (pattern === 0) {
           rowType = 'large'; // 1 large item
-        } else if (random < 0.6) {
+        } else if (pattern < 3) {
           rowType = 'two'; // 2 items
         } else {
           rowType = 'three'; // 3 items
@@ -98,9 +133,23 @@ const ItemGrid = ({ selectedCategory, categoryId }) => {
     }
     
     return layouts;
-  };
+  }, [items]);
 
-  const rowLayouts = createRowLayouts(items);
+  if (loading) {
+    return (
+      <div className="flex justify-center py-8">
+        <div className="text-neutral-light">Loading items...</div>
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="flex justify-center py-8">
+        <div className="text-neutral-light">No items found</div>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-6 space-y-6">
@@ -111,6 +160,7 @@ const ItemGrid = ({ selectedCategory, categoryId }) => {
               <ItemCard
                 item={row.items[0]}
                 onAddToCart={handleAddToCart}
+                onItemClick={onItemClick}
                 isLarge={true}
               />
             </div>
@@ -123,6 +173,7 @@ const ItemGrid = ({ selectedCategory, categoryId }) => {
                   key={item.itemId}
                   item={item}
                   onAddToCart={handleAddToCart}
+                  onItemClick={onItemClick}
                 />
               ))}
             </div>
@@ -135,6 +186,7 @@ const ItemGrid = ({ selectedCategory, categoryId }) => {
                   key={item.itemId}
                   item={item}
                   onAddToCart={handleAddToCart}
+                  onItemClick={onItemClick}
                   isSmall={true}
                 />
               ))}
@@ -146,6 +198,7 @@ const ItemGrid = ({ selectedCategory, categoryId }) => {
               <ItemCard
                 item={row.items[0]}
                 onAddToCart={handleAddToCart}
+                onItemClick={onItemClick}
               />
             </div>
           )}
@@ -156,4 +209,3 @@ const ItemGrid = ({ selectedCategory, categoryId }) => {
 };
 
 export default ItemGrid;
-

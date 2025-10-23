@@ -25,6 +25,16 @@ const Login = () => {
 
   // Extract encrypted params from URL on component mount
   useEffect(() => {
+    // Check for session-ended message from API interceptor
+    const message = searchParams.get('message');
+    if (message) {
+      setError(decodeURIComponent(message));
+      // Clear the message after showing it
+      setTimeout(() => {
+        setError('');
+      }, 5000);
+    }
+
     const params = extractEncryptedParams(searchParams);
     
     // DEBUG: Print decrypted data
@@ -97,7 +107,9 @@ const Login = () => {
       const response = await customerService.register(
         mobileNumber,
         mobileType,
-        uniqueId
+        uniqueId,
+        tableId,
+        tableName
       );
 
       if (response.success) {

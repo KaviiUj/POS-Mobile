@@ -106,7 +106,7 @@ exports.protectCustomer = async (req, res, next) => {
     }
 
     // Check if customer still exists
-    const customer = await Customer.findById(decoded.customerId);
+    const customer = await Customer.findById(decoded.customerId).populate('tableId');
     if (!customer) {
       logger.warn('Customer access denied: Customer not found', {
         customerId: decoded.customerId,
@@ -119,6 +119,46 @@ exports.protectCustomer = async (req, res, next) => {
       });
     }
 
+    // Check if customer has an active session
+    if (!customer.sessionActive) {
+      logger.warn('Customer access denied: No active session', {
+        customerId: customer._id.toString(),
+        sessionEndedAt: customer.sessionEndedAt,
+        ip: req.ip,
+      });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Your session has ended. Please scan the QR code again.',
+        sessionEnded: true,
+        requiresNewScan: true,
+      });
+    }
+
+    // Check if session has timed out (no order placed within 30 minutes)
+    const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+    const sessionAge = Date.now() - new Date(customer.sessionStartedAt).getTime();
+    
+    if (customer.activeOrderIds.length === 0 && sessionAge > SESSION_TIMEOUT) {
+      logger.warn('Customer access denied: Session timed out without order', {
+        customerId: customer._id.toString(),
+        sessionStartedAt: customer.sessionStartedAt,
+        sessionAge: sessionAge,
+        ip: req.ip,
+      });
+
+      // Auto-expire the session
+      customer.endSession();
+      await customer.save();
+
+      return res.status(401).json({
+        success: false,
+        message: 'Your session has expired. Please scan the QR code again.',
+        sessionExpired: true,
+        requiresNewScan: true,
+      });
+    }
+
     // Attach customer to request
     req.customer = customer;
     req.token = token;
@@ -127,6 +167,8 @@ exports.protectCustomer = async (req, res, next) => {
     logger.info('Customer authentication successful', {
       customerId: customer._id.toString(),
       mobileNumber: customer.mobileNumber,
+      sessionActive: customer.sessionActive,
+      activeOrders: customer.activeOrderIds.length,
       url: req.originalUrl,
     });
 

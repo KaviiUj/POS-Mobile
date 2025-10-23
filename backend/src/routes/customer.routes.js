@@ -6,6 +6,7 @@ const {
   registerCustomer,
   refreshAccessToken,
   getCustomerInfo,
+  logoutCustomer,
 } = require('../controllers/customer.controller');
 
 // Import middleware
@@ -90,6 +91,13 @@ router.post('/refresh-token', refreshAccessToken);
  * @access  Private (Customer)
  */
 router.get('/me', protectCustomer, getCustomerInfo);
+
+/**
+ * @route   POST /api/v1/customer/logout
+ * @desc    Logout customer and end session
+ * @access  Private (Customer)
+ */
+router.post('/logout', protectCustomer, logoutCustomer);
 
 module.exports = router;
 

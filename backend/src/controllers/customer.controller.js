@@ -1,6 +1,7 @@
 const Customer = require('../models/Customer.model');
 const RefreshToken = require('../models/RefreshToken.model');
 const TokenBlacklist = require('../models/TokenBlacklist.model');
+const Table = require('../models/Table.model');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 
@@ -27,49 +28,102 @@ const generateRefreshToken = (customerId) => {
 };
 
 /**
- * @desc    Register customer (or login if exists)
+ * @desc    Register customer (or login if exists) and start new session
  * @route   POST /api/v1/customer/register
  * @access  Public
  */
 exports.registerCustomer = async (req, res) => {
   try {
-    const { mobileNumber, mobileType, uniqueId } = req.body;
+    const { mobileNumber, mobileType, uniqueId, tableId, tableName } = req.body;
 
     logger.info('Customer registration attempt', {
       mobileNumber,
       mobileType,
       uniqueId,
+      tableId,
+      tableName,
     });
 
     // Check if customer already exists by uniqueId (device)
     let customer = await Customer.findOne({ uniqueId });
+    const isNewCustomer = !customer;
 
     if (customer) {
       // Customer exists on this device - update mobile number and device type
       customer.mobileNumber = mobileNumber;
       customer.mobileType = mobileType;
-      await customer.save();
+      
+      // If customer has an active session, end it first (new QR scan = new session)
+      if (customer.sessionActive) {
+        logger.info('Ending previous active session', {
+          customerId: customer._id.toString(),
+          previousTableId: customer.tableId,
+          previousTableName: customer.tableName,
+        });
 
-      logger.info('Existing customer logged in', {
+        // Blacklist all existing tokens for this customer
+        await TokenBlacklist.updateMany(
+          { customerId: customer._id },
+          { $set: { reason: 'new_session_started' } }
+        );
+
+        // Deactivate all existing refresh tokens
+        await RefreshToken.updateMany(
+          { customerId: customer._id, isActive: true },
+          { $set: { isActive: false } }
+        );
+      }
+
+      logger.info('Existing customer starting new session', {
         customerId: customer._id.toString(),
         mobileNumber: customer.mobileNumber,
         uniqueId: customer.uniqueId,
       });
     } else {
       // Create new customer for this device
-      customer = await Customer.create({
+      customer = new Customer({
         mobileNumber,
         mobileType,
         uniqueId,
-        orderId: '',
-        tableName: '',
       });
 
       logger.info('New customer registered', {
-        customerId: customer._id.toString(),
         mobileNumber: customer.mobileNumber,
         uniqueId: customer.uniqueId,
       });
+    }
+
+    // Start new session (whether new or existing customer)
+    customer.startSession(tableId || null, tableName || '');
+    await customer.save();
+
+    logger.info('New session started', {
+      customerId: customer._id.toString(),
+      tableId: customer.tableId,
+      tableName: customer.tableName,
+      sessionStartedAt: customer.sessionStartedAt,
+    });
+
+    // Generate session PIN for table verification
+    let sessionPin = null;
+    if (tableId) {
+      const table = await Table.findById(tableId);
+      if (table) {
+        sessionPin = table.generateSessionPin(customer._id);
+        await table.save();
+
+        logger.info('Session PIN generated for table', {
+          customerId: customer._id.toString(),
+          tableId: table._id.toString(),
+          tableName: table.tableName,
+          pinGeneratedAt: table.pinGeneratedAt,
+        });
+      } else {
+        logger.warn('Table not found for PIN generation', {
+          tableId,
+          customerId: customer._id.toString(),
+        });
+      }
     }
 
     // Generate tokens
@@ -91,7 +145,7 @@ exports.registerCustomer = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: customer.isNew ? 'Customer registered successfully' : 'Customer logged in successfully',
+      message: isNewCustomer ? 'Customer registered successfully' : 'Customer logged in successfully',
       data: {
         customer: {
           id: customer._id,
@@ -101,7 +155,10 @@ exports.registerCustomer = async (req, res) => {
           orderId: customer.orderId,
           tableId: customer.tableId,
           tableName: customer.tableName,
+          sessionActive: customer.sessionActive,
+          sessionStartedAt: customer.sessionStartedAt,
         },
+        sessionPin, // PIN for order verification (staff will display this)
         accessToken,
         refreshToken,
         expiresIn: '3h', // Access token expiry
@@ -271,6 +328,89 @@ exports.getCustomerInfo = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching customer information',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Logout customer and end session
+ * @route   POST /api/v1/customer/logout
+ * @access  Private (Customer)
+ */
+exports.logoutCustomer = async (req, res) => {
+  try {
+    const customerId = req.customer._id;
+    const token = req.token;
+
+    logger.info('Customer logout initiated', {
+      customerId: customerId.toString(),
+    });
+
+    // End customer session
+    const customer = await Customer.findById(customerId);
+    if (customer) {
+      // Clear table session PIN if exists
+      if (customer.tableId) {
+        const table = await Table.findById(customer.tableId);
+        if (table) {
+          table.clearSessionPin();
+          await table.save();
+
+          logger.info('Table session PIN cleared on logout', {
+            customerId: customerId.toString(),
+            tableId: table._id.toString(),
+          });
+        }
+      }
+
+      customer.endSession();
+      await customer.save();
+
+      logger.info('Customer session ended', {
+        customerId: customerId.toString(),
+      });
+    }
+
+    // Blacklist current access token
+    if (token) {
+      const decoded = req.decoded;
+      await TokenBlacklist.create({
+        token,
+        customerId,
+        reason: 'logout',
+        expiresAt: new Date(decoded.exp * 1000),
+      }).catch(err => {
+        if (err.code !== 11000) {
+          logger.debug('Error blacklisting token on logout', { error: err.message });
+        }
+      });
+    }
+
+    // Deactivate all refresh tokens for this customer
+    await RefreshToken.updateMany(
+      { customerId, isActive: true },
+      { $set: { isActive: false } }
+    );
+
+    logger.info('Customer logged out successfully', {
+      customerId: customerId.toString(),
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully',
+    });
+  } catch (error) {
+    logger.error('Logout error', {
+      error: error.message,
+      stack: error.stack,
+      customerId: req.customer?._id.toString(),
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error logging out',
       error: error.message,
     });
   }

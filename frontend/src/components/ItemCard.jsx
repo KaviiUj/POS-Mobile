@@ -2,18 +2,21 @@ import React from 'react';
 import { useOutletStore } from '../store/outletStore';
 import Discount from './Discount';
 
-const ItemCard = ({ item, onAddToCart, isLarge = false, isSmall = false }) => {
+const ItemCard = ({ item, onAddToCart, onItemClick, isLarge = false, isSmall = false }) => {
   const { outletCurrency } = useOutletStore();
   
-  // Create varying heights for masonry effect
-  const getRandomHeight = () => {
+  // Create varying heights for masonry effect - deterministic based on item ID
+  const getCardHeight = () => {
     if (isLarge) return 350;
     if (isSmall) return 180;
+    
+    // Use itemId to generate consistent height
     const heights = [200, 220, 240, 260, 280, 300];
-    return heights[Math.floor(Math.random() * heights.length)];
+    const hash = item.itemId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return heights[hash % heights.length];
   };
   
-  const cardHeight = getRandomHeight();
+  const cardHeight = getCardHeight();
 
   const formatPrice = (price) => {
     // Convert cents to currency format without decimals
@@ -33,15 +36,23 @@ const ItemCard = ({ item, onAddToCart, isLarge = false, isSmall = false }) => {
 
   const discountedPrice = getDiscountedPrice();
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (e) => {
+    e.stopPropagation(); // Prevent card click event
     if (onAddToCart) {
       onAddToCart(item);
     }
   };
 
+  const handleCardClick = () => {
+    if (onItemClick) {
+      onItemClick(item);
+    }
+  };
+
   return (
     <div 
-      className={`${isLarge ? 'w-full' : isSmall ? 'w-[120px]' : 'w-[149px]'} rounded-[23px] relative overflow-hidden`}
+      onClick={handleCardClick}
+      className={`${isLarge ? 'w-full' : isSmall ? 'w-[120px]' : 'w-[149px]'} rounded-[23px] relative overflow-hidden cursor-pointer`}
       style={{
         height: `${cardHeight}px`,
         backgroundImage: 'url(/src/assets/item-surface.png)',

@@ -16,6 +16,24 @@ export const orderService = {
     return response.data;
   },
 
+  placeOrder: async (orderData) => {
+    const response = await api.post('/order/place', orderData);
+    return response.data;
+  },
+
+  verifySessionPin: async (sessionPin, tableId) => {
+    const response = await api.post('/order/verify-pin', {
+      sessionPin,
+      tableId,
+    });
+    return response.data;
+  },
+
+  settleBill: async (paymentMethod) => {
+    const response = await api.patch(`/order/settle?paymentMethod=${paymentMethod}`);
+    return response.data;
+  },
+
   getOrderStats: async () => {
     const response = await api.get('/orders/stats/summary');
     return response.data;

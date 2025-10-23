@@ -35,6 +35,27 @@ const customerSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    // Session Management Fields
+    sessionActive: {
+      type: Boolean,
+      default: false,
+    },
+    sessionStartedAt: {
+      type: Date,
+      default: null,
+    },
+    sessionEndedAt: {
+      type: Date,
+      default: null,
+    },
+    activeOrderIds: {
+      type: [String],
+      default: [],
+    },
+    lastOrderId: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -42,6 +63,37 @@ const customerSchema = new mongoose.Schema(
 );
 
 // Index for faster queries (unique fields already indexed automatically)
+customerSchema.index({ sessionActive: 1 });
+customerSchema.index({ sessionStartedAt: 1 });
+
+// Method to start a new session
+customerSchema.methods.startSession = function (tableId, tableName) {
+  this.sessionActive = true;
+  this.sessionStartedAt = new Date();
+  this.sessionEndedAt = null;
+  this.tableId = tableId;
+  this.tableName = tableName;
+  this.activeOrderIds = [];
+};
+
+// Method to end session
+customerSchema.methods.endSession = function () {
+  this.sessionActive = false;
+  this.sessionEndedAt = new Date();
+  this.tableId = null;
+  this.tableName = '';
+  this.orderId = '';
+  this.activeOrderIds = [];
+};
+
+// Method to add order to session
+customerSchema.methods.addOrderToSession = function (orderNumber) {
+  if (!this.activeOrderIds.includes(orderNumber)) {
+    this.activeOrderIds.push(orderNumber);
+  }
+  this.lastOrderId = orderNumber;
+  this.orderId = orderNumber; // Keep for backward compatibility
+};
 
 module.exports = mongoose.model('Customer', customerSchema);
 

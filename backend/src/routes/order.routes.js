@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 // Import controllers
-const { placeOrder, settleBill } = require('../controllers/order.controller');
+const { placeOrder, settleBill, verifySessionPin } = require('../controllers/order.controller');
 
 // Import middleware
 const { protectCustomer } = require('../middleware/customerAuth.middleware');
@@ -20,5 +20,12 @@ router.post('/place', protectCustomer, placeOrder);
  * @access  Private (Customer)
  */
 router.patch('/settle', protectCustomer, settleBill);
+
+/**
+ * @route   POST /api/v1/order/verify-pin
+ * @desc    Verify session PIN before placing order
+ * @access  Private (Customer)
+ */
+router.post('/verify-pin', protectCustomer, verifySessionPin);
 
 module.exports = router;

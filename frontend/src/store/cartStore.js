@@ -1,50 +1,18 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
-export const useCartStore = create((set, get) => ({
-  items: [],
-  
-  addItem: (product) => {
-    const items = get().items;
-    const existingItem = items.find((item) => item._id === product._id);
-    
-    if (existingItem) {
-      set({
-        items: items.map((item) =>
-          item._id === product._id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        ),
-      });
-    } else {
-      set({ items: [...items, { ...product, quantity: 1 }] });
+export const useCartStore = create(
+  persist(
+    (set) => ({
+      cartId: null,
+      cart: null,
+      setCartId: (cartId) => set({ cartId }),
+      setCart: (cart) => set({ cart, cartId: cart.cartId }),
+      clearCart: () => set({ cartId: null, cart: null }),
+    }),
+    {
+      name: 'cart-storage',
     }
-  },
-  
-  removeItem: (productId) => {
-    set({ items: get().items.filter((item) => item._id !== productId) });
-  },
-  
-  updateQuantity: (productId, quantity) => {
-    if (quantity <= 0) {
-      get().removeItem(productId);
-      return;
-    }
-    
-    set({
-      items: get().items.map((item) =>
-        item._id === productId ? { ...item, quantity } : item
-      ),
-    });
-  },
-  
-  clearCart: () => set({ items: [] }),
-  
-  getTotal: () => {
-    return get().items.reduce((total, item) => total + item.price * item.quantity, 0);
-  },
-  
-  getItemCount: () => {
-    return get().items.reduce((count, item) => count + item.quantity, 0);
-  },
-}));
+  )
+);
 

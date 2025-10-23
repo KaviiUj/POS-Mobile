@@ -91,3 +91,75 @@ code {
     monospace;
 }
 
+/* Hide scrollbar for webkit browsers */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Custom item preview animations */
+@keyframes expandImage {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInBottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes collapseImage {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+}
+
+@keyframes slideOutBottom {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+.animate-expandImage {
+  animation: expandImage 0.4s ease-out;
+}
+
+.animate-slideInBottom {
+  animation: slideInBottom 0.4s ease-out 0.2s both;
+}
+
+.animate-collapseImage {
+  animation: collapseImage 0.3s ease-in;
+}
+
+.animate-slideOutBottom {
+  animation: slideOutBottom 0.3s ease-in;
+}
+
+

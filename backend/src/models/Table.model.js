@@ -24,6 +24,20 @@ const tableSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Session PIN for order verification
+    sessionPin: {
+      type: String,
+      default: null,
+    },
+    pinGeneratedAt: {
+      type: Date,
+      default: null,
+    },
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Customer',
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -34,16 +48,47 @@ const tableSchema = new mongoose.Schema(
 tableSchema.index({ isAvailable: 1 });
 tableSchema.index({ tableName: 1 });
 
+// Generate 6-digit PIN
+const generatePin = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
 // Method to make table available
 tableSchema.methods.makeAvailable = function () {
   this.isAvailable = true;
   this.orderId = null;
+  this.sessionPin = null;
+  this.pinGeneratedAt = null;
+  this.customerId = null;
 };
 
 // Method to occupy table with order
 tableSchema.methods.occupyWithOrder = function (orderId) {
   this.isAvailable = false;
   this.orderId = orderId;
+};
+
+// Method to generate and set session PIN
+tableSchema.methods.generateSessionPin = function (customerId) {
+  this.sessionPin = generatePin();
+  this.pinGeneratedAt = new Date();
+  this.customerId = customerId;
+  return this.sessionPin;
+};
+
+// Method to verify PIN
+tableSchema.methods.verifyPin = function (inputPin) {
+  if (!this.sessionPin) {
+    return false;
+  }
+  return this.sessionPin === inputPin.toString();
+};
+
+// Method to clear session PIN
+tableSchema.methods.clearSessionPin = function () {
+  this.sessionPin = null;
+  this.pinGeneratedAt = null;
+  this.customerId = null;
 };
 
 module.exports = mongoose.model('Table', tableSchema);
