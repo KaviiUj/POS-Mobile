@@ -66,10 +66,26 @@ exports.addToCart = async (req, res) => {
     });
 
     if (cart) {
-      // Cart exists, add item if not already present
-      if (!cart.items.includes(itemId)) {
-        cart.items.push(itemId);
+      // Check if item has modifiers
+      const hasModifiers = item.modifiers && item.modifiers.length > 0;
+      
+      // If item has NO modifiers, check if it already exists in cart
+      if (!hasModifiers && cart.items.includes(itemId)) {
+        logger.warn('Item already in cart (no modifiers)', {
+          customerId: customerId.toString(),
+          itemId,
+          cartId: cart._id.toString(),
+        });
+
+        return res.status(400).json({
+          success: false,
+          message: 'Item is already in the cart',
+        });
       }
+      
+      // Items with modifiers can be added multiple times (duplicates allowed)
+      // Items without modifiers cannot be duplicated (checked above)
+      cart.items.push(itemId);
       
       // Update table info if provided
       if (tableId !== undefined) {
@@ -226,24 +242,35 @@ exports.updateCart = async (req, res) => {
       });
     }
 
-    // Add item to cart if not already present
-    if (!cart.items.includes(itemId)) {
-      cart.items.push(itemId);
-      await cart.save();
-
-      logger.info('Item added to cart via update', {
+    // Check if item has modifiers
+    const hasModifiers = item.modifiers && item.modifiers.length > 0;
+    
+    // If item has NO modifiers, check if it already exists in cart
+    if (!hasModifiers && cart.items.includes(itemId)) {
+      logger.warn('Item already in cart (no modifiers)', {
         customerId: customerId.toString(),
         itemId,
         cartId: cart._id.toString(),
-        totalItems: cart.items.length,
       });
-    } else {
-      logger.info('Item already in cart', {
-        customerId: customerId.toString(),
-        itemId,
-        cartId: cart._id.toString(),
+
+      return res.status(400).json({
+        success: false,
+        message: 'Item is already in the cart',
       });
     }
+    
+    // Items with modifiers can be added multiple times (duplicates allowed)
+    // Items without modifiers cannot be duplicated (checked above)
+    cart.items.push(itemId);
+    await cart.save();
+
+    logger.info('Item added to cart via update', {
+      customerId: customerId.toString(),
+      itemId,
+      cartId: cart._id.toString(),
+      totalItems: cart.items.length,
+      hasModifiers,
+    });
 
     // Format response
     const response = {
@@ -307,13 +334,11 @@ exports.getCartItems = async (req, res) => {
       });
     }
 
-    // Find cart and populate items
+    // Find cart
     const cart = await Cart.findOne({
       _id: cartId,
       userId: customerId,
-    })
-      .populate('items')
-      .lean();
+    }).lean();
 
     if (!cart) {
       logger.warn('Cart not found', {
@@ -342,23 +367,35 @@ exports.getCartItems = async (req, res) => {
       });
     }
 
-    // Format items - rename _id to itemId and remove unnecessary fields
-    const formattedItems = cart.items.map(item => ({
-      itemId: item._id,
-      categoryId: item.categoryId,
-      categoryName: item.categoryName,
-      itemName: item.itemName,
-      itemDescription: item.itemDescription,
-      itemImage: item.itemImage,
-      isVeg: item.isVeg,
-      cuisine: item.cuisine,
-      price: item.price,
-      discount: item.discount,
-      modifiers: item.modifiers,
-      isActive: item.isActive,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    }));
+    // Fetch item details for each item ID (including duplicates)
+    const itemDetails = await Item.find({ _id: { $in: cart.items } });
+    
+    // Create a map for quick lookup
+    const itemMap = {};
+    itemDetails.forEach(item => {
+      itemMap[item._id.toString()] = item;
+    });
+    
+    // Format items - preserve duplicates and map to full item details
+    const formattedItems = cart.items.map(itemId => {
+      const item = itemMap[itemId];
+      return {
+        itemId: item._id,
+        categoryId: item.categoryId,
+        categoryName: item.categoryName,
+        itemName: item.itemName,
+        itemDescription: item.itemDescription,
+        itemImage: item.itemImage,
+        isVeg: item.isVeg,
+        cuisine: item.cuisine,
+        price: item.price,
+        discount: item.discount,
+        modifiers: item.modifiers,
+        isActive: item.isActive,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      };
+    });
 
     logger.info('Cart items fetched successfully', {
       customerId: customerId.toString(),
@@ -586,6 +623,77 @@ exports.removeItemFromCart = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error removing item from cart',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Delete entire cart
+ * @route   DELETE /api/v1/cart
+ * @access  Private (Customer)
+ */
+exports.deleteCart = async (req, res) => {
+  try {
+    const { cartId } = req.query;
+    const customerId = req.customer._id;
+
+    logger.info('Deleting cart', {
+      customerId: customerId.toString(),
+      cartId,
+    });
+
+    // Validate cartId
+    if (!cartId) {
+      logger.warn('Cart ID not provided', {
+        customerId: customerId.toString(),
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Cart ID is required',
+      });
+    }
+
+    // Find and delete cart
+    const cart = await Cart.findOneAndDelete({
+      _id: cartId,
+      userId: customerId,
+    });
+
+    if (!cart) {
+      logger.warn('Cart not found', {
+        customerId: customerId.toString(),
+        cartId,
+      });
+
+      return res.status(404).json({
+        success: false,
+        message: 'Cart not found',
+      });
+    }
+
+    logger.info('Cart deleted successfully', {
+      customerId: customerId.toString(),
+      cartId,
+      deletedItemsCount: cart.items.length,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Cart deleted successfully',
+    });
+  } catch (error) {
+    logger.error('Error deleting cart', {
+      error: error.message,
+      stack: error.stack,
+      customerId: req.customer?._id.toString(),
+      cartId: req.query.cartId,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting cart',
       error: error.message,
     });
   }

@@ -1,13 +1,15 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useOutletStore } from '../store/outletStore';
 import { useCartStore } from '../store/cartStore';
 
 const Header = () => {
+  const navigate = useNavigate();
   const { logo, outletName } = useOutletStore();
-  const { cart } = useCartStore();
+  const { getTotalItems } = useCartStore();
   
   // Get item count from cart
-  const itemCount = cart?.items?.length || 0;
+  const itemCount = getTotalItems();
 
   return (
     <div className="flex items-center justify-between mb-8">
@@ -32,7 +34,10 @@ const Header = () => {
       
       {/* Right: Cart Icon with Badge */}
       <div className="relative">
-        <button className="relative">
+        <button 
+          onClick={() => navigate('/cart')}
+          className="relative"
+        >
           {/* Cart Icon */}
           <svg 
             className="w-8 h-8 text-accent" 
@@ -49,9 +54,11 @@ const Header = () => {
           </svg>
           
           {/* Badge */}
-          <div className="absolute -top-2 -right-2 bg-primary text-white text-[10px] font-semibold rounded-full w-5 h-5 flex items-center justify-center">
-            {itemCount}
-          </div>
+          {itemCount > 0 && (
+            <div className="absolute -top-2 -right-2 bg-primary text-white text-[10px] font-semibold rounded-full w-5 h-5 flex items-center justify-center">
+              {itemCount}
+            </div>
+          )}
         </button>
       </div>
     </div>

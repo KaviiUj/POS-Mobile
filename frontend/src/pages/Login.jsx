@@ -131,6 +131,7 @@ const Login = () => {
         try {
           const outletConfigResponse = await outletService.getOutletConfig();
           if (outletConfigResponse.success) {
+            console.log('🔍 Raw outlet config response:', outletConfigResponse.data);
             setOutletConfig(outletConfigResponse.data);
             console.log('✅ Outlet config loaded:', outletConfigResponse.data);
           }

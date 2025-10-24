@@ -7,7 +7,8 @@ const {
   updateCart, 
   getCartItems,
   updateCartOrderStatus,
-  removeItemFromCart
+  removeItemFromCart,
+  deleteCart
 } = require('../controllers/cart.controller');
 
 // Import middleware
@@ -47,6 +48,13 @@ router.patch('/order', protectCustomer, updateCartOrderStatus);
  * @access  Private (Customer)
  */
 router.delete('/item', protectCustomer, removeItemFromCart);
+
+/**
+ * @route   DELETE /api/v1/cart?cartId=xxx
+ * @desc    Delete entire cart
+ * @access  Private (Customer)
+ */
+router.delete('/', protectCustomer, deleteCart);
 
 module.exports = router;
 

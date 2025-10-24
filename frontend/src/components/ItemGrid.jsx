@@ -49,13 +49,16 @@ const ItemGrid = ({ selectedCategory, categoryId, onItemAdded, onItemClick }) =>
       if (!hasModifiers && cartId) {
         const { cart } = useCartStore.getState();
         if (cart?.items?.includes(item.itemId)) {
-          console.log('❌ Item already in cart');
+          console.log('❌ Item already in cart (no modifiers)');
           if (onItemAdded) {
             onItemAdded('Item is already in the cart');
           }
           return;
         }
       }
+      
+      // Items with modifiers can be added multiple times (duplicates allowed)
+      // Items without modifiers cannot be duplicated
       
       let response;
       

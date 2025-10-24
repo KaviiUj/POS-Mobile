@@ -11,12 +11,7 @@ const cartSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
-    items: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Item',
-      },
-    ],
+    items: [String], // Store as string array instead of ObjectId
     orderId: {
       type: String,
       default: '',
