@@ -65,13 +65,16 @@ const Header = () => {
         <div className="relative">
           <button 
             onClick={() => navigate('/cart')}
-            className="relative"
+            className="w-[34px] h-[34px] rounded-lg flex items-center justify-center"
+            style={{
+              backgroundColor: '#1C2029',
+            }}
           >
             {/* Cart Icon */}
             <svg 
-              className="w-8 h-8 text-accent" 
+              className="w-[20px] h-[20px]" 
               fill="none" 
-              stroke="currentColor" 
+              stroke="#AEAEAE" 
               viewBox="0 0 24 24"
             >
               <path 
@@ -95,13 +98,16 @@ const Header = () => {
         {hasOrders && (
           <button 
             onClick={() => navigate('/orders')}
-            className="relative"
+            className="w-[34px] h-[34px] rounded-lg flex items-center justify-center relative"
+            style={{
+              backgroundColor: '#1C2029',
+            }}
           >
             {/* Orders Icon */}
             <svg 
-              className="w-8 h-8 text-accent" 
+              className="w-[20px] h-[20px]" 
               fill="none" 
-              stroke="currentColor" 
+              stroke="#AEAEAE" 
               viewBox="0 0 24 24"
             >
               <path 
