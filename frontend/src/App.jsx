@@ -6,12 +6,7 @@ import { useAuthStore } from './store/authStore';
 import Login from './pages/Login';
 import Home from './pages/Home';
 import Cart from './pages/Cart';
-import Dashboard from './pages/Dashboard';
-import Products from './pages/Products';
-import Categories from './pages/Categories';
 import Orders from './pages/Orders';
-import POS from './pages/POS';
-import Layout from './components/Layout';
 
 function App() {
   const { accessToken } = useAuthStore();
@@ -23,17 +18,9 @@ function App() {
           <Route path="/login" element={!accessToken ? <Login /> : <Navigate to="/home" />} />
           <Route path="/home" element={accessToken ? <Home /> : <Navigate to="/login" />} />
           <Route path="/cart" element={accessToken ? <Cart /> : <Navigate to="/login" />} />
-          
-          <Route path="/" element={accessToken ? <Layout /> : <Navigate to="/login" />}>
-            <Route index element={<Navigate to="/dashboard" />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="pos" element={<POS />} />
-            <Route path="products" element={<Products />} />
-            <Route path="categories" element={<Categories />} />
-            <Route path="orders" element={<Orders />} />
-          </Route>
-
-          <Route path="*" element={<Navigate to={accessToken ? "/home" : "/login"} />} />
+          <Route path="/orders" element={accessToken ? <Orders /> : <Navigate to="/login" />} />
+          <Route path="/" element={<Navigate to="/login" />} />
+          <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
       </Router>
       <ToastContainer position="top-right" autoClose={3000} />

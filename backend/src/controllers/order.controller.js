@@ -4,6 +4,7 @@ const Table = require('../models/Table.model');
 const Customer = require('../models/Customer.model');
 const TokenBlacklist = require('../models/TokenBlacklist.model');
 const RefreshToken = require('../models/RefreshToken.model');
+const KOT = require('../models/KOT.model');
 const logger = require('../utils/logger');
 
 /**
@@ -119,37 +120,162 @@ exports.placeOrder = async (req, res) => {
       });
     }
 
-    // Format order items
-    const orderItems = items.map(item => ({
-      itemId: item.itemId,
-      itemName: item.itemName,
-      itemImage: item.itemImage,
-      quantity: 1, // Since we don't track quantity
-      price: item.price || 0,
-      discount: item.discount || 0,
-      selectedModifiers: item.modifiers || [],
-      itemTotal: item.price || 0,
-    }));
-
-    // Create order
-    const order = await Order.create({
-      cartId: cartId || null,
-      tableId: tableId || null,
-      tableName: tableName || '',
-      items: orderItems,
-      subtotal: totalAmount || 0,
-      discount: discountAmount || 0,
-      tax: 0,
-      total: totalAmount - (discountAmount || 0),
-      paymentMethod: 'cash',
-      paymentStatus: 'pending',
-      orderStatus: 'new',
-      customer: {
-        phone: mobileNumber,
-      },
-      notes: note || '',
-      billIsSettle: false,
+    // Format order items with proper calculations
+    const orderItems = items.map(item => {
+      // Frontend already sends discounted price, so use it directly
+      const discountedPrice = item.price || 0;
+      const discount = item.discount || 0;
+      const quantity = item.quantity || 1;
+      const selectedModifiers = item.modifiers || [];
+      
+      // Use modifierPrice from frontend, or calculate from selectedModifiers array as fallback
+      const modifierPrice = item.modifierPrice || selectedModifiers.reduce((total, modifier) => {
+        return total + (modifier.modifierPrice || 0);
+      }, 0);
+      
+      // Calculate total item price (discounted price + modifiers) * quantity
+      const itemTotal = (discountedPrice + modifierPrice) * quantity;
+      
+      // Debug logging
+      logger.info('Item calculation debug', {
+        itemName: item.itemName,
+        discountedPrice,
+        discount,
+        modifierPrice,
+        selectedModifiers,
+        itemTotal,
+        quantity
+      });
+      
+      // Calculate original price before discount
+      const actualPrice = discount > 0 
+        ? discountedPrice / (1 - discount / 100)
+        : discountedPrice;
+      
+      // Ensure actualPrice is a valid number
+      const validActualPrice = isNaN(actualPrice) ? discountedPrice : actualPrice;
+      
+      // Debug logging
+      logger.info('Item actualPrice calculation', {
+        itemName: item.itemName,
+        discountedPrice,
+        discount,
+        actualPrice,
+        validActualPrice,
+        quantity
+      });
+      
+      return {
+        itemId: item.itemId,
+        itemName: item.itemName,
+        itemImage: item.itemImage,
+        quantity: quantity,
+        price: discountedPrice, // Use the discounted price from frontend
+        actualPrice: validActualPrice, // Original price before discount
+        discount: discount,
+        selectedModifiers: selectedModifiers,
+        itemTotal: itemTotal, // Correctly calculated total
+      };
     });
+
+    // Check if there's already an existing order for this table that hasn't been settled
+    let order;
+    const existingOrder = await Order.findOne({
+      tableId: tableId,
+      billIsSettle: false,
+      orderStatus: 'new'
+    });
+
+    if (existingOrder) {
+      // Update existing order instead of creating new one
+      logger.info('Updating existing order instead of creating new one', {
+        customerId: customerId.toString(),
+        existingOrderId: existingOrder._id.toString(),
+        existingOrderNumber: existingOrder.orderNumber,
+        newItemCount: orderItems.length,
+      });
+
+      // Add new items to existing order
+      existingOrder.items.push(...orderItems);
+      
+      // Recalculate totals for new items
+      const newItemsTotal = orderItems.reduce((sum, item) => sum + item.itemTotal, 0);
+      const newItemsDiscount = orderItems.reduce((sum, item) => {
+        const discountedPrice = item.price || 0;
+        const discount = item.discount || 0;
+        const quantity = item.quantity || 1;
+        
+        if (discount > 0) {
+          // Calculate original price from discounted price
+          const originalPrice = discountedPrice / (1 - discount / 100);
+          const discountAmount = (originalPrice - discountedPrice) * quantity;
+          return sum + discountAmount;
+        }
+        return sum;
+      }, 0);
+      
+      existingOrder.subtotal += newItemsTotal;
+      existingOrder.discount += newItemsDiscount;
+      existingOrder.total = existingOrder.subtotal;
+      existingOrder.updatedAt = new Date();
+      
+      await existingOrder.save();
+      order = existingOrder;
+
+      logger.info('Existing order updated with new items', {
+        customerId: customerId.toString(),
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        totalItems: order.items.length,
+        updatedTotal: order.total,
+      });
+    } else {
+      // Calculate totals from orderItems
+      const calculatedSubtotal = orderItems.reduce((sum, item) => sum + item.itemTotal, 0);
+      const calculatedTotal = calculatedSubtotal;
+      
+      // Calculate discount amount from individual item discounts
+      const calculatedDiscount = orderItems.reduce((sum, item) => {
+        const discountedPrice = item.price || 0;
+        const discount = item.discount || 0;
+        const quantity = item.quantity || 1;
+        const modifierPrice = item.modifierPrice || 0;
+        
+        if (discount > 0) {
+          // Calculate original price from discounted price
+          const originalPrice = discountedPrice / (1 - discount / 100);
+          const discountAmount = (originalPrice - discountedPrice) * quantity;
+          return sum + discountAmount;
+        }
+        return sum;
+      }, 0);
+      
+      // Create new order
+      order = await Order.create({
+        cartId: cartId || null,
+        tableId: tableId || null,
+        tableName: tableName || '',
+        items: orderItems,
+        subtotal: calculatedSubtotal,
+        discount: calculatedDiscount,
+        tax: 0,
+        total: calculatedTotal,
+        paymentMethod: 'cash',
+        paymentStatus: 'pending',
+        orderStatus: 'new',
+        customer: {
+          phone: mobileNumber,
+        },
+        notes: note || '',
+        billIsSettle: false,
+      });
+
+      logger.info('New order created', {
+        customerId: customerId.toString(),
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+      });
+    }
 
     logger.info('Order created successfully', {
       customerId: customerId.toString(),
@@ -226,6 +352,66 @@ exports.placeOrder = async (req, res) => {
       }
     }
 
+    // Send KOT to kitchen
+    try {
+      const kotId = KOT.generateKOTId();
+      const kotItems = orderItems.map(item => ({
+        itemId: item.itemId,
+        itemName: item.itemName,
+        quantity: item.quantity,
+        modifiers: item.selectedModifiers || [],
+        price: item.price,
+        totalPrice: item.itemTotal,
+      }));
+
+      // Determine KOT type based on whether this is updating an existing order
+      const kotType = existingOrder ? 'ORDER_AMENDMENT' : 'NEW_ORDER';
+      const amendmentReason = existingOrder ? 'Customer added more items to existing order' : null;
+
+      const kot = await KOT.create({
+        kotId,
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        kotType,
+        tableName: order.tableName,
+        items: kotItems,
+        amendmentReason,
+        timestamp: new Date(),
+        kitchenStatus: 'PENDING',
+      });
+
+      // If this is an amendment, link to the original KOT
+      if (existingOrder) {
+        const parentKOT = await KOT.findOne({ 
+          orderId: order._id.toString(), 
+          kotType: 'NEW_ORDER' 
+        }).sort({ timestamp: 1 });
+        
+        if (parentKOT) {
+          kot.parentKotId = parentKOT.kotId;
+          await kot.save();
+        }
+      }
+
+      logger.info('KOT sent to kitchen', {
+        customerId: customerId.toString(),
+        kotId: kot.kotId,
+        orderId: order._id.toString(),
+        kotType,
+        itemCount: kotItems.length,
+      });
+
+      // TODO: Send to kitchen system (printer/display)
+      // await sendToKitchenSystem(kot);
+    } catch (kotError) {
+      logger.error('Error sending KOT to kitchen', {
+        error: kotError.message,
+        orderId: order._id.toString(),
+        customerId: customerId.toString(),
+      });
+      // Don't fail the order if KOT fails
+    }
+
     logger.info('Order placed successfully', {
       customerId: customerId.toString(),
       cartId,
@@ -236,11 +422,14 @@ exports.placeOrder = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Order placed successfully',
+      message: existingOrder ? 'Items added to existing order successfully' : 'Order placed successfully',
       data: {
         cartId,
         orderId: order._id,
         orderNumber: order.orderNumber,
+        isUpdate: !!existingOrder,
+        totalItems: order.items.length,
+        updatedTotal: order.total,
       },
     });
   } catch (error) {
@@ -253,6 +442,286 @@ exports.placeOrder = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error placing order',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Add items to existing order
+ * @route   PUT /api/v1/order/add-items?orderId=xxx
+ * @access  Private (Customer)
+ */
+exports.addItemsToOrder = async (req, res) => {
+  try {
+    const { orderId } = req.query;
+    const { items, sessionPin } = req.body;
+    const customerId = req.customer._id;
+
+    logger.info('Adding items to existing order', {
+      customerId: customerId.toString(),
+      orderId,
+      itemCount: items.length,
+    });
+
+    // Validate required fields
+    if (!orderId || !items || items.length === 0) {
+      logger.warn('Missing required fields for order update', {
+        customerId: customerId.toString(),
+        orderId,
+        itemsProvided: !!items,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Order ID and items are required',
+      });
+    }
+
+    // Find the existing order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      logger.warn('Order not found for update', {
+        customerId: customerId.toString(),
+        orderId,
+      });
+
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+      });
+    }
+
+    // Validate order is still editable
+    if (order.billIsSettle) {
+      logger.warn('Cannot modify settled order', {
+        customerId: customerId.toString(),
+        orderId,
+        billIsSettle: order.billIsSettle,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot modify order that has been settled',
+      });
+    }
+
+    // Verify session PIN if provided
+    if (sessionPin && order.tableId) {
+      const table = await Table.findById(order.tableId);
+      if (table && !table.verifyPin(sessionPin)) {
+        logger.warn('Invalid session PIN for order update', {
+          customerId: customerId.toString(),
+          orderId,
+        });
+
+        return res.status(403).json({
+          success: false,
+          message: 'Invalid PIN. Please check the PIN and try again.',
+        });
+      }
+    }
+
+    // Format new items
+    const newOrderItems = items.map(item => ({
+      itemId: item.itemId,
+      itemName: item.itemName,
+      itemImage: item.itemImage,
+      quantity: item.quantity || 1,
+      price: item.price || 0,
+      discount: item.discount || 0,
+      selectedModifiers: item.modifiers || [],
+      itemTotal: (item.price || 0) * (item.quantity || 1),
+    }));
+
+    // Add new items to existing order
+    order.items.push(...newOrderItems);
+    
+    // Recalculate totals
+    const newItemsTotal = newOrderItems.reduce((sum, item) => sum + item.itemTotal, 0);
+    order.subtotal += newItemsTotal;
+    order.total += newItemsTotal;
+    
+    // Update timestamp
+    order.updatedAt = new Date();
+    
+    await order.save();
+
+    logger.info('Order updated with new items', {
+      customerId: customerId.toString(),
+      orderId: order._id.toString(),
+      newItemCount: newOrderItems.length,
+      newItemsTotal,
+      updatedTotal: order.total,
+    });
+
+    // Send amendment KOT to kitchen
+    try {
+      const kotId = KOT.generateKOTId();
+      const kotItems = newOrderItems.map(item => ({
+        itemId: item.itemId,
+        itemName: item.itemName,
+        quantity: item.quantity,
+        modifiers: item.selectedModifiers || [],
+        price: item.price,
+        totalPrice: item.itemTotal,
+      }));
+
+      const kot = await KOT.create({
+        kotId,
+        parentKotId: null, // Will be set by finding the original KOT
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        kotType: 'ORDER_AMENDMENT',
+        tableName: order.tableName,
+        items: kotItems,
+        amendmentReason: 'Customer requested additional items',
+        timestamp: new Date(),
+        kitchenStatus: 'PENDING',
+      });
+
+      // Find and link to parent KOT
+      const parentKOT = await KOT.findOne({ 
+        orderId: order._id.toString(), 
+        kotType: 'NEW_ORDER' 
+      }).sort({ timestamp: 1 });
+      
+      if (parentKOT) {
+        kot.parentKotId = parentKOT.kotId;
+        await kot.save();
+      }
+
+      logger.info('Amendment KOT sent to kitchen', {
+        customerId: customerId.toString(),
+        kotId: kot.kotId,
+        orderId: order._id.toString(),
+        itemCount: kotItems.length,
+      });
+
+      // TODO: Send to kitchen system (printer/display)
+      // await sendToKitchenSystem(kot);
+    } catch (kotError) {
+      logger.error('Error sending amendment KOT to kitchen', {
+        error: kotError.message,
+        orderId: order._id.toString(),
+        customerId: customerId.toString(),
+      });
+      // Don't fail the order update if KOT fails
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Items added to order successfully',
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        newItemCount: newOrderItems.length,
+        updatedTotal: order.total,
+        items: order.items,
+      },
+    });
+  } catch (error) {
+    logger.error('Error adding items to order', {
+      error: error.message,
+      stack: error.stack,
+      customerId: req.customer?._id.toString(),
+      orderId: req.query.orderId,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error adding items to order',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Get order by orderId
+ * @route   GET /api/v1/order/get?orderId=xxx
+ * @access  Private (Customer)
+ */
+exports.getOrder = async (req, res) => {
+  try {
+    const { orderId } = req.query;
+    const customerId = req.customer._id;
+
+    logger.info('Getting order by ID', {
+      customerId: customerId.toString(),
+      orderId,
+    });
+
+    // Validate orderId parameter
+    if (!orderId) {
+      logger.warn('Order ID not provided', {
+        customerId: customerId.toString(),
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Order ID is required',
+      });
+    }
+
+    // Find order by orderId
+    const order = await Order.findOne({ 
+      _id: orderId,
+      'customer.phone': req.customer.mobileNumber 
+    });
+
+    if (!order) {
+      logger.warn('Order not found', {
+        customerId: customerId.toString(),
+        orderId,
+      });
+
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+      });
+    }
+
+    logger.info('Order retrieved successfully', {
+      customerId: customerId.toString(),
+      orderId: order._id.toString(),
+      orderNumber: order.orderNumber,
+      orderStatus: order.orderStatus,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Order retrieved successfully',
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        tableId: order.tableId,
+        tableName: order.tableName,
+        items: order.items,
+        subtotal: order.subtotal,
+        discount: order.discount,
+        tax: order.tax,
+        total: order.total,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        orderStatus: order.orderStatus,
+        customer: order.customer,
+        notes: order.notes,
+        billIsSettle: order.billIsSettle,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+      },
+    });
+  } catch (error) {
+    logger.error('Error getting order', {
+      error: error.message,
+      stack: error.stack,
+      customerId: req.customer?._id.toString(),
+      orderId: req.query.orderId,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error getting order',
       error: error.message,
     });
   }

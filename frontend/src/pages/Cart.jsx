@@ -3,17 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { useCartStore } from '../store/cartStore';
 import { useOutletStore } from '../store/outletStore';
 import { useAuthStore } from '../store/authStore';
+import { useTableStore } from '../store/tableStore';
 import { cartService } from '../services/cartService';
+import { orderService } from '../services/orderService';
 import CartItem from '../components/CartItem';
 import Button from '../components/Button';
+import PinVerificationModal from '../components/PinVerificationModal';
 
 const Cart = () => {
   const navigate = useNavigate();
-  const { cartId, cart, setCart, getTotalPrice, clearCart, updateItemModifiers, updateItemQuantity } = useCartStore();
+  const { cartId, cart, setCart, getTotalPrice, clearCart, updateItemModifiers, updateItemQuantity, itemModifiers, itemQuantities } = useCartStore();
   const { outletConfig } = useOutletStore();
-  const { accessToken } = useAuthStore();
+  const { accessToken, customer } = useAuthStore();
+  const { tableNumber, tableId, tableName } = useTableStore();
   const [loading, setLoading] = useState(true);
   const [cartItems, setCartItems] = useState([]);
+  const [showPinModal, setShowPinModal] = useState(false);
   
   const currency = outletConfig?.outletCurrency || outletConfig?.currency || 'Rs';
   
@@ -57,8 +62,113 @@ const Cart = () => {
   }, [cartId, setCart]);
 
   const handleCheckout = () => {
-    // TODO: Implement checkout logic
-    console.log('Proceeding to checkout...');
+    setShowPinModal(true);
+  };
+
+  const handlePinVerify = async (enteredPin) => {
+    setShowPinModal(false);
+    
+    try {
+      // Prepare order data with sessionPin
+      const orderData = await prepareOrderData(enteredPin);
+      
+      // Call the place order API
+      const response = await orderService.placeOrder(orderData);
+      
+        if (response.success) {
+          console.log('Order placed successfully:', response.data);
+          
+          // Store orderId locally only if it's a new order (not an update)
+          if (!response.data.isUpdate) {
+            const existingOrderIds = JSON.parse(localStorage.getItem('orderIds') || '[]');
+            existingOrderIds.push(response.data.orderId);
+            localStorage.setItem('orderIds', JSON.stringify(existingOrderIds));
+          }
+          
+          // Clear the cart after successful order placement
+          clearCart();
+          setCartItems([]);
+          
+          // Show success message
+          const message = response.data.isUpdate 
+            ? `Items added to order successfully! Order Number: ${response.data.orderNumber}`
+            : `Order placed successfully! Order Number: ${response.data.orderNumber}`;
+          alert(message);
+          
+          // Trigger a custom event to refresh the header
+          window.dispatchEvent(new CustomEvent('orderPlaced'));
+          
+          // Navigate back to home
+          navigate('/home');
+        } else {
+        throw new Error(response.message || 'Failed to place order');
+      }
+    } catch (error) {
+      console.error('Failed to place order:', error);
+      alert('Failed to place order. Please try again.');
+      throw error;
+    }
+  };
+
+  const handlePinModalClose = () => {
+    setShowPinModal(false);
+  };
+
+  const prepareOrderData = async (sessionPin) => {
+    // Get cart items with modifiers and quantities
+    const items = cartItems.map((item, index) => {
+      const uniqueKey = `${item.itemId}_${index}`;
+      const modifierData = itemModifiers[uniqueKey];
+      const selectedModifiers = modifierData?.selectedModifiers || [];
+      const modifierPrice = modifierData?.totalModifierPrice || 0;
+      const quantity = itemQuantities[uniqueKey] || 1;
+      
+      // Calculate item price with discount
+      const basePrice = item.price || 0;
+      const discount = item.discount || 0;
+      const finalPrice = discount > 0 
+        ? basePrice - (basePrice * discount / 100)
+        : basePrice;
+      
+      return {
+        itemId: item.itemId,
+        categoryId: item.categoryId,
+        categoryName: item.categoryName,
+        itemName: item.itemName,
+        itemDescription: item.itemDescription,
+        itemImage: item.itemImage,
+        isVeg: item.isVeg,
+        price: finalPrice,
+        discount: discount,
+        modifiers: selectedModifiers,
+        modifierPrice: modifierPrice,
+        quantity: quantity,
+        isActive: item.isActive,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt
+      };
+    });
+
+    const totalAmount = getTotalPrice();
+    const discountAmount = cartItems.reduce((total, item) => {
+      const itemDiscount = item.discount || 0;
+      const basePrice = item.price || 0;
+      return total + (basePrice * itemDiscount / 100);
+    }, 0);
+
+    return {
+      items: items,
+      totalItems: items.length,
+      totalAmount: totalAmount,
+      discountAmount: discountAmount,
+      tableId: tableId,
+      tableName: tableName,
+      userId: customer?.userId || null,
+      mobileNumber: customer?.mobileNumber || null,
+      billIsSettle: false,
+      cartId: cartId,
+      sessionPin: sessionPin // Include the session PIN for backend validation
+    };
   };
 
   const handleClearCart = async () => {
@@ -226,9 +336,17 @@ const Cart = () => {
           </span>
         </div>
         <Button onClick={handleCheckout} className="w-full">
-          Proceed to Checkout
+          Continue
         </Button>
       </div>
+
+      {/* PIN Verification Modal */}
+      <PinVerificationModal
+        isOpen={showPinModal}
+        onClose={handlePinModalClose}
+        onVerify={handlePinVerify}
+        tableNumber={tableNumber}
+      />
     </div>
   );
 };

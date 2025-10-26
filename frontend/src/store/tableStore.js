@@ -6,8 +6,9 @@ export const useTableStore = create(
     (set) => ({
       tableId: null,
       tableName: null,
-      setTable: (tableId, tableName) => set({ tableId, tableName }),
-      clearTable: () => set({ tableId: null, tableName: null }),
+      tableNumber: null,
+      setTable: (tableId, tableName, tableNumber) => set({ tableId, tableName, tableNumber }),
+      clearTable: () => set({ tableId: null, tableName: null, tableNumber: null }),
     }),
     {
       name: 'table-storage',

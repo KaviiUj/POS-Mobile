@@ -36,6 +36,7 @@ app.use('/api/v1/item', require('./routes/item.routes'));
 app.use('/api/v1/outletConfig', require('./routes/settings.routes'));
 app.use('/api/v1/cart', require('./routes/cart.routes'));
 app.use('/api/v1/order', require('./routes/order.routes'));
+app.use('/api/v1/kot', require('./routes/kot.routes'));
 app.use('/api/v1/qr', require('./routes/qr.routes'));
 
 // Health check route

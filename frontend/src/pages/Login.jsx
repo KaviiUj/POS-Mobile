@@ -53,7 +53,7 @@ const Login = () => {
     
     // If we have table information, store it
     if (params.tableName || params.tableId) {
-      setTable(params.tableId, params.tableName);
+      setTable(params.tableId, params.tableName, params.tableName);
     }
 
     // If mobile number is provided in params, pre-fill it
