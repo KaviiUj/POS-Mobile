@@ -6,6 +6,7 @@ const { placeOrder, getOrder, addItemsToOrder, settleBill, verifySessionPin } = 
 
 // Import middleware
 const { protectCustomer } = require('../middleware/customerAuth.middleware');
+const { authenticateStaff } = require('../middleware/staffAuth.middleware');
 
 /**
  * @route   POST /api/v1/order/place
@@ -29,11 +30,11 @@ router.get('/get', protectCustomer, getOrder);
 router.put('/add-items', protectCustomer, addItemsToOrder);
 
 /**
- * @route   PATCH /api/v1/order/settle?orderId=xxx&paymentMethod=xxx
- * @desc    Settle bill for order
- * @access  Private (Customer)
+ * @route   PATCH /api/v1/order/settle?paymentMethod=xxx&customerId=xxx or &tableId=xxx
+ * @desc    Settle bill for order (Staff only)
+ * @access  Private (Staff)
  */
-router.patch('/settle', protectCustomer, settleBill);
+router.patch('/settle', authenticateStaff, settleBill);
 
 /**
  * @route   POST /api/v1/order/verify-pin

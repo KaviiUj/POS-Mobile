@@ -729,25 +729,27 @@ exports.getOrder = async (req, res) => {
 
 /**
  * @desc    Settle bill for all orders in session
- * @route   PATCH /api/v1/order/settle?paymentMethod=xxx
- * @access  Private (Customer)
+ * @route   PATCH /api/v1/order/settle?paymentMethod=xxx&customerId=xxx or &tableId=xxx
+ * @access  Private (Staff)
  */
 exports.settleBill = async (req, res) => {
   try {
-    const { paymentMethod } = req.query;
-    const customerId = req.customer._id;
-    const customer = req.customer;
+    const { paymentMethod, customerId: customerIdParam, tableId: tableIdParam } = req.query;
+    const staffUser = req.user; // Staff user from authenticateStaff middleware
 
-    logger.info('Settling bill for customer session', {
-      customerId: customerId.toString(),
-      activeOrders: customer.activeOrderIds,
+    logger.info('Staff settling bill', {
+      staffUserId: staffUser.userId,
+      staffUserName: staffUser.userName,
+      staffRole: staffUser.role,
+      customerIdParam,
+      tableIdParam,
       paymentMethod,
     });
 
     // Validate payment method
     if (!paymentMethod) {
       logger.warn('Payment method not provided', {
-        customerId: customerId.toString(),
+        staffUserId: staffUser.userId,
       });
 
       return res.status(400).json({
@@ -756,9 +758,84 @@ exports.settleBill = async (req, res) => {
       });
     }
 
+    // Find customer by customerId or tableId
+    let customer;
+    if (customerIdParam) {
+      customer = await Customer.findById(customerIdParam);
+      if (!customer) {
+        logger.warn('Customer not found', {
+          staffUserId: staffUser.userId,
+          customerId: customerIdParam,
+        });
+
+        return res.status(404).json({
+          success: false,
+          message: 'Customer not found',
+        });
+      }
+    } else if (tableIdParam) {
+      const table = await Table.findById(tableIdParam);
+      if (!table) {
+        logger.warn('Table not found', {
+          staffUserId: staffUser.userId,
+          tableId: tableIdParam,
+        });
+
+        return res.status(404).json({
+          success: false,
+          message: 'Table not found',
+        });
+      }
+
+      if (!table.customerId) {
+        logger.warn('No customer associated with table', {
+          staffUserId: staffUser.userId,
+          tableId: tableIdParam,
+        });
+
+        return res.status(400).json({
+          success: false,
+          message: 'No customer associated with this table',
+        });
+      }
+
+      customer = await Customer.findById(table.customerId);
+      if (!customer) {
+        logger.warn('Customer not found for table', {
+          staffUserId: staffUser.userId,
+          tableId: tableIdParam,
+          customerId: table.customerId,
+        });
+
+        return res.status(404).json({
+          success: false,
+          message: 'Customer not found for this table',
+        });
+      }
+    } else {
+      logger.warn('Customer ID or Table ID not provided', {
+        staffUserId: staffUser.userId,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Customer ID or Table ID is required',
+      });
+    }
+
+    const customerId = customer._id;
+
+    logger.info('Settling bill for customer session', {
+      staffUserId: staffUser.userId,
+      customerId: customerId.toString(),
+      activeOrders: customer.activeOrderIds,
+      paymentMethod,
+    });
+
     // Check if customer has active orders
     if (!customer.activeOrderIds || customer.activeOrderIds.length === 0) {
       logger.warn('No active orders to settle', {
+        staffUserId: staffUser.userId,
         customerId: customerId.toString(),
       });
 
@@ -802,6 +879,7 @@ exports.settleBill = async (req, res) => {
       settledOrderNumbers.push(order.orderNumber);
 
       logger.info('Order settled', {
+        staffUserId: staffUser.userId,
         customerId: customerId.toString(),
         orderId: order._id.toString(),
         orderNumber: order.orderNumber,
@@ -810,6 +888,7 @@ exports.settleBill = async (req, res) => {
     }
 
     logger.info('All orders in session settled', {
+      staffUserId: staffUser.userId,
       customerId: customerId.toString(),
       settledOrders: settledOrderNumbers,
       totalAmount: totalBillAmount,
@@ -834,24 +913,12 @@ exports.settleBill = async (req, res) => {
     await customer.save();
 
     logger.info('Customer session ended after bill settlement', {
+      staffUserId: staffUser.userId,
       customerId: customerId.toString(),
     });
 
-    // Blacklist all active tokens for this customer
-    const currentToken = req.token;
-    if (currentToken) {
-      const decoded = req.decoded;
-      await TokenBlacklist.create({
-        token: currentToken,
-        customerId,
-        reason: 'bill_settled',
-        expiresAt: new Date(decoded.exp * 1000),
-      }).catch(err => {
-        if (err.code !== 11000) {
-          logger.debug('Error blacklisting token on bill settlement', { error: err.message });
-        }
-      });
-    }
+    // Note: Customer tokens will be invalidated when they try to use them
+    // We don't have the customer's token here since staff is settling
 
     // Deactivate all refresh tokens for this customer
     await RefreshToken.updateMany(
@@ -860,10 +927,12 @@ exports.settleBill = async (req, res) => {
     );
 
     logger.info('All tokens invalidated after bill settlement', {
+      staffUserId: staffUser.userId,
       customerId: customerId.toString(),
     });
 
     logger.info('Bill settlement completed successfully', {
+      staffUserId: staffUser.userId,
       customerId: customerId.toString(),
       settledOrders: settledOrderNumbers.length,
       totalAmount: totalBillAmount,
@@ -884,7 +953,7 @@ exports.settleBill = async (req, res) => {
     logger.error('Error settling bill', {
       error: error.message,
       stack: error.stack,
-      customerId: req.customer?._id.toString(),
+      staffUserId: req.user?.userId,
     });
 
     res.status(500).json({
