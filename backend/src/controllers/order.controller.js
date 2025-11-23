@@ -6,6 +6,7 @@ const TokenBlacklist = require('../models/TokenBlacklist.model');
 const RefreshToken = require('../models/RefreshToken.model');
 const KOT = require('../models/KOT.model');
 const logger = require('../utils/logger');
+const { emitOrderCreated } = require('../utils/socketService');
 
 /**
  * @desc    Place order from cart
@@ -283,8 +284,43 @@ exports.placeOrder = async (req, res) => {
       orderNumber: order.orderNumber,
     });
 
-    // Update customer with order information
+    // Get customer information for real-time notification
     const customer = await Customer.findById(customerId);
+
+    // Emit real-time notification to cashier system
+    try {
+      emitOrderCreated({
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        tableId: order.tableId ? order.tableId.toString() : null,
+        tableName: order.tableName || null,
+        customerId: customerId.toString(),
+        customerMobileNumber: customer ? customer.mobileNumber : mobileNumber || null,
+        items: order.items,
+        subtotal: order.subtotal,
+        discount: order.discount,
+        tax: order.tax,
+        total: order.total,
+        paymentStatus: order.paymentStatus,
+        orderStatus: order.orderStatus,
+        createdAt: order.createdAt,
+        isUpdate: !!existingOrder, // Whether this is updating existing order
+      });
+
+      logger.info('Order created event emitted to cashier system', {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        tableId: order.tableId ? order.tableId.toString() : null,
+      });
+    } catch (socketError) {
+      // Don't fail the request if socket emission fails
+      logger.error('Failed to emit order created event', {
+        error: socketError.message,
+        orderId: order._id.toString(),
+      });
+    }
+
+    // Update customer with order information
     if (customer) {
       customer.addOrderToSession(order.orderNumber);
       await customer.save();

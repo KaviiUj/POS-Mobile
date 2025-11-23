@@ -4,6 +4,7 @@ const TokenBlacklist = require('../models/TokenBlacklist.model');
 const Table = require('../models/Table.model');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
+const { emitPinGenerated } = require('../utils/socketService');
 
 /**
  * Generate Access Token (expires in 3 hours)
@@ -118,6 +119,30 @@ exports.registerCustomer = async (req, res) => {
           tableName: table.tableName,
           pinGeneratedAt: table.pinGeneratedAt,
         });
+
+        // Emit real-time notification to cashier system
+        try {
+          emitPinGenerated({
+            tableId: table._id.toString(),
+            tableName: table.tableName,
+            sessionPin: sessionPin,
+            customerId: customer._id.toString(),
+            customerMobileNumber: customer.mobileNumber,
+            pinGeneratedAt: table.pinGeneratedAt,
+          });
+
+          logger.info('PIN generation event emitted to cashier system', {
+            tableId: table._id.toString(),
+            tableName: table.tableName,
+            sessionPin: sessionPin,
+          });
+        } catch (socketError) {
+          // Don't fail the request if socket emission fails
+          logger.error('Failed to emit PIN generation event', {
+            error: socketError.message,
+            tableId: table._id.toString(),
+          });
+        }
       } else {
         logger.warn('Table not found for PIN generation', {
           tableId,

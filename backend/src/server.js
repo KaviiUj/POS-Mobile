@@ -7,6 +7,7 @@ const logger = require('./utils/logger');
 const { errorLogger, errorHandler } = require('./middleware/errorLogger');
 const morganLogger = require('./middleware/morganLogger');
 const { initializeScheduledCleanup } = require('./utils/sessionCleanup');
+const { initializeSocket } = require('./utils/socketService');
 
 // Load environment variables
 dotenv.config();
@@ -72,9 +73,13 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5001;
 const HOST = '0.0.0.0';
 
-app.listen(PORT, HOST, () => {
+// Create HTTP server and attach Socket.io
+const server = app.listen(PORT, HOST, () => {
   logger.info(`🚀 Server is running on ${HOST}:${PORT} in ${process.env.NODE_ENV} mode`);
 });
+
+// Initialize Socket.io for real-time updates
+initializeSocket(server);
 
 module.exports = app;
 
