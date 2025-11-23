@@ -3,6 +3,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 import { useAuthStore } from './store/authStore';
+import { useSessionCheck } from './hooks/useSessionCheck';
 import Login from './pages/Login';
 import Home from './pages/Home';
 import Cart from './pages/Cart';
@@ -10,6 +11,9 @@ import Orders from './pages/Orders';
 
 function App() {
   const { accessToken } = useAuthStore();
+  
+  // Check session status periodically to detect if bill was settled
+  useSessionCheck();
 
   return (
     <>

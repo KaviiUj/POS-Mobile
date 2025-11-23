@@ -16,10 +16,11 @@ const Login = () => {
   const [mobileNumber, setMobileNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [debugInfo, setDebugInfo] = useState(null);
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
-  const { tableId, tableName, setTable } = useTableStore();
+  const { tableId, tableName, setTable, clearTable } = useTableStore();
   const { setOutletConfig } = useOutletStore();
   const [searchParams] = useSearchParams();
 
@@ -27,15 +28,36 @@ const Login = () => {
   useEffect(() => {
     // Check for session-ended message from API interceptor
     const message = searchParams.get('message');
+    let isThankYouMessage = false;
+    
     if (message) {
-      setError(decodeURIComponent(message));
-      // Clear the message after showing it
-      setTimeout(() => {
-        setError('');
-      }, 5000);
+      const decodedMessage = decodeURIComponent(message);
+      
+      // Check if it's a thank you message (success)
+      if (decodedMessage.toLowerCase().includes('thank you')) {
+        isThankYouMessage = true;
+        setSuccessMessage(decodedMessage);
+        // Clear the message after showing it
+        setTimeout(() => {
+          setSuccessMessage('');
+        }, 5000);
+        
+        // Clear table store when coming from settlement
+        // This prevents reusing old table token after bill is settled
+        clearTable();
+      } else {
+        // Otherwise treat as error
+        setError(decodedMessage);
+        // Clear the message after showing it
+        setTimeout(() => {
+          setError('');
+        }, 5000);
+      }
     }
 
-    const params = extractEncryptedParams(searchParams);
+    // Only extract table params if NOT coming from settlement (thank you message)
+    // This prevents reusing old table token after bill is settled
+    const params = isThankYouMessage ? { tableName: null, tableId: null, mobileNumber: null } : extractEncryptedParams(searchParams);
     
     // DEBUG: Print decrypted data
     if (params.tableName || params.tableId) {
@@ -192,6 +214,9 @@ const Login = () => {
             </div>
             {error && (
               <p className="mt-2 text-sm text-primary">{error}</p>
+            )}
+            {successMessage && (
+              <p className="mt-2 text-sm text-green-400 font-medium">{successMessage}</p>
             )}
           </div>
 

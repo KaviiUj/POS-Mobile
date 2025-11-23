@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
+import { useTableStore } from '../store/tableStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1';
 
@@ -26,7 +27,26 @@ api.interceptors.request.use(
 
 // Response interceptor
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Check for sessionEnded flag in successful responses too
+    const data = response.data;
+    if (data?.sessionEnded || data?.requiresNewScan) {
+      const authStore = useAuthStore.getState();
+      
+      // Only handle if user is still logged in
+      if (authStore.accessToken) {
+        authStore.logout();
+        
+        // Clear table store since session is ended
+        useTableStore.getState().clearTable();
+        
+        // Redirect to login page with thank you message
+        const message = 'Thank you for ordering with us!';
+        window.location.href = `/login?message=${encodeURIComponent(message)}`;
+      }
+    }
+    return response;
+  },
   (error) => {
     const response = error.response;
     
@@ -37,9 +57,12 @@ api.interceptors.response.use(
       if (data?.sessionEnded || data?.sessionExpired || data?.requiresNewScan) {
         useAuthStore.getState().logout();
         
-        // Redirect to home/QR scan page with message
-        const message = data.message || 'Your session has ended. Please scan the QR code again.';
-        window.location.href = `/?message=${encodeURIComponent(message)}`;
+        // Clear table store since session is ended
+        useTableStore.getState().clearTable();
+        
+        // Redirect to login page with thank you message
+        const message = 'Thank you for ordering with us!';
+        window.location.href = `/login?message=${encodeURIComponent(message)}`;
         
         return Promise.reject(error);
       }
@@ -66,7 +89,8 @@ api.interceptors.response.use(
             .catch(() => {
               // Refresh failed, logout and redirect
               useAuthStore.getState().logout();
-              window.location.href = '/?message=Session expired. Please scan the QR code again.';
+              useTableStore.getState().clearTable();
+              window.location.href = '/login?message=Session expired. Please scan the QR code again.';
               return Promise.reject(error);
             });
         }
@@ -74,6 +98,7 @@ api.interceptors.response.use(
       
       // Default 401 handling - logout and redirect to login
       useAuthStore.getState().logout();
+      useTableStore.getState().clearTable();
       window.location.href = '/login';
     }
     
