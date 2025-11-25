@@ -3,6 +3,12 @@ const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      index: true,
+    },
     userName: {
       type: String,
       required: [true, 'Please provide a username'],
@@ -52,5 +58,8 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 userSchema.methods.getRoleName = function () {
   return this.role === 99 ? 'Admin' : 'Staff';
 };
+
+// Index for faster queries
+userSchema.index({ restaurantCode: 1 });
 
 module.exports = mongoose.model('User', userSchema);

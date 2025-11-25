@@ -2,6 +2,13 @@ const mongoose = require('mongoose');
 
 const settingsSchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      unique: true,
+      index: true,
+    },
     logo: {
       type: String,
       trim: true,

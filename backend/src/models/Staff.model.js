@@ -3,6 +3,12 @@ const bcrypt = require('bcryptjs');
 
 const staffSchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      index: true,
+    },
     staffName: {
       type: String,
       required: [true, 'Please provide staff name'],
@@ -71,6 +77,7 @@ staffSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 // Index for faster queries
+staffSchema.index({ restaurantCode: 1 });
 staffSchema.index({ staffName: 1 });
 staffSchema.index({ isActive: 1 });
 

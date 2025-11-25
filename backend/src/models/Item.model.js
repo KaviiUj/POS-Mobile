@@ -15,6 +15,12 @@ const modifierSchema = new mongoose.Schema({
 
 const itemSchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      index: true,
+    },
     categoryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Category',
@@ -84,6 +90,7 @@ const itemSchema = new mongoose.Schema(
 );
 
 // Indexes for better query performance
+itemSchema.index({ restaurantCode: 1 });
 itemSchema.index({ categoryId: 1, isActive: 1 });
 itemSchema.index({ itemName: 1 });
 itemSchema.index({ isVeg: 1 });

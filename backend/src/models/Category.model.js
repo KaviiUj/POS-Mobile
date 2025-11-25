@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const categorySchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      index: true,
+    },
     categoryName: {
       type: String,
       required: [true, 'Please provide category name'],
@@ -36,6 +42,7 @@ const categorySchema = new mongoose.Schema(
 );
 
 // Index for faster queries
+categorySchema.index({ restaurantCode: 1 });
 categorySchema.index({ isActive: 1 });
 categorySchema.index({ createdBy: 1 });
 

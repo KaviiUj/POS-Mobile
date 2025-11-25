@@ -48,6 +48,12 @@ const orderItemSchema = new mongoose.Schema({
 
 const orderSchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      index: true,
+    },
     orderNumber: {
       type: String,
       unique: true,
@@ -140,6 +146,7 @@ orderSchema.pre('save', async function (next) {
 });
 
 // Indexes for better query performance
+orderSchema.index({ restaurantCode: 1 });
 orderSchema.index({ orderNumber: 1 });
 orderSchema.index({ tableId: 1 });
 orderSchema.index({ orderStatus: 1 });

@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const tableSchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      index: true,
+    },
     tableName: {
       type: String,
       required: [true, 'Please provide table name'],
@@ -45,6 +51,7 @@ const tableSchema = new mongoose.Schema(
 );
 
 // Index for faster queries
+tableSchema.index({ restaurantCode: 1 });
 tableSchema.index({ isAvailable: 1 });
 tableSchema.index({ tableName: 1 });
 

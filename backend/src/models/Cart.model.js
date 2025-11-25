@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const cartSchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      index: true,
+    },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Customer',
@@ -35,6 +41,7 @@ const cartSchema = new mongoose.Schema(
 );
 
 // Index for faster queries
+cartSchema.index({ restaurantCode: 1 });
 cartSchema.index({ userId: 1 });
 cartSchema.index({ mobileNumber: 1 });
 cartSchema.index({ orderIsPlaced: 1 });

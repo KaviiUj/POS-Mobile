@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const kotSchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      index: true,
+    },
     kotId: {
       type: String,
       required: true,
@@ -99,6 +105,7 @@ const kotSchema = new mongoose.Schema(
 );
 
 // Index for faster queries
+kotSchema.index({ restaurantCode: 1 });
 kotSchema.index({ kotId: 1 });
 kotSchema.index({ orderId: 1 });
 kotSchema.index({ kotType: 1 });

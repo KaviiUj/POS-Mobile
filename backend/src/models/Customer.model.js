@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const customerSchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      index: true,
+    },
     mobileNumber: {
       type: Number,
       required: [true, 'Mobile number is required'],
@@ -63,6 +69,7 @@ const customerSchema = new mongoose.Schema(
 );
 
 // Index for faster queries (unique fields already indexed automatically)
+customerSchema.index({ restaurantCode: 1 });
 customerSchema.index({ sessionActive: 1 });
 customerSchema.index({ sessionStartedAt: 1 });
 

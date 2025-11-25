@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const refreshTokenSchema = new mongoose.Schema(
   {
+    restaurantCode: {
+      type: String,
+      required: [true, 'Restaurant code is required'],
+      trim: true,
+      index: true,
+    },
     token: {
       type: String,
       required: true,
@@ -27,6 +33,7 @@ const refreshTokenSchema = new mongoose.Schema(
 );
 
 // Auto-delete expired refresh tokens (TTL index)
+refreshTokenSchema.index({ restaurantCode: 1 });
 refreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 refreshTokenSchema.index({ customerId: 1 });
 
