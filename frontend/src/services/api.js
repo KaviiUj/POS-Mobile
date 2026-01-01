@@ -2,6 +2,9 @@ import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { useTableStore } from '../store/tableStore';
 
+// API URL is set via environment variables:
+// - Development: .env.development (VITE_API_URL=http://localhost:5001/api/v1)
+// - Production: .env.production (VITE_API_URL=http://216.158.229.227:4003/api/v1)
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1';
 
 const api = axios.create({
